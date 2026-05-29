@@ -1,0 +1,11 @@
+*.onnx
+*.pth
+*.caffemodel
+*.prototxt
+__pycache__/
+.DS_Store
+results/
+*.json
+!registered_face.json
+!keerthi_embedding.json
+SilentFace/.git/
