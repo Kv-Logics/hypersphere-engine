@@ -22,8 +22,9 @@ ANTISPOOF_MODEL_PATH = "2.7_80x80_MiniFASNetV2.pth"
 RECOGNITION_MODEL_PATH = "w600k_r50.onnx"
 REGISTERED_FACE_PATH = "registered_face.json"
 
-ANTISPOOF_THRESHOLD = 0.85
+ANTISPOOF_THRESHOLD = 0.40
 MATCH_THRESHOLD = 0.45
+BBOX_EXPANSION = 2.7
 
 # Standard reference points for a 112x112 aligned face.
 dst_pts = np.array([
@@ -142,47 +143,53 @@ def main():
                     if spoof_crop.size == 0: continue
                     real_score = get_antispoof_score(antispoof_model, device, spoof_crop)
                     
-                    flip_xmin = max(0, w - exp_xmax)
-                    flip_xmax = min(w, w - exp_xmin)
+                    # Coordinates for the visual tight bounding box (what you see on screen)
+                    tight_xmax = xmin + box_w
+                    tight_flip_xmin = max(0, w - tight_xmax)
+                    tight_flip_xmax = min(w, w - xmin)
                     
-                    if real_score < ANTISPOOF_THRESHOLD:
-                        # REJECT: It is a spoof. We skip recognition entirely to save compute!
-                        color = (0, 0, 255) # Red
-                        label = f"SPOOF DETECTED ({real_score:.2f})"
-                        cv2.rectangle(display_image, (flip_xmin, exp_ymin), (flip_xmax, exp_ymax), color, 3)
-                    else:
-                        # --- 3. LAYER 2: FACE RECOGNITION ---
-                        # Only reached if the face is REAL
-                        keypoints = detection.location_data.relative_keypoints
-                        src_pts = np.array([
-                            (keypoints[0].x * w, keypoints[0].y * h), # Right Eye
-                            (keypoints[1].x * w, keypoints[1].y * h), # Left Eye
-                            (keypoints[2].x * w, keypoints[2].y * h)  # Nose Tip
-                        ], dtype=np.float32)
+                    is_real = real_score >= ANTISPOOF_THRESHOLD
+
+                    # --- 3. LAYER 2: FACE RECOGNITION (Now running on every frame) ---
+                    keypoints = detection.location_data.relative_keypoints
+                    src_pts = np.array([
+                        (keypoints[0].x * w, keypoints[0].y * h), # Right Eye
+                        (keypoints[1].x * w, keypoints[1].y * h), # Left Eye
+                        (keypoints[2].x * w, keypoints[2].y * h)  # Nose Tip
+                    ], dtype=np.float32)
+                    
+                    tform, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
+                    if tform is not None:
+                        aligned_face = cv2.warpAffine(image, tform, (112, 112))
+                        live_embedding = get_face_embedding(recog_session, aligned_face)
+                        similarity = calculate_cosine_similarity(base_embedding, live_embedding)
                         
-                        tform, _ = cv2.estimateAffinePartial2D(src_pts, dst_pts)
-                        if tform is not None:
-                            aligned_face = cv2.warpAffine(image, tform, (112, 112))
-                            live_embedding = get_face_embedding(recog_session, aligned_face)
-                            similarity = calculate_cosine_similarity(base_embedding, live_embedding)
-                            
-                            if similarity >= MATCH_THRESHOLD:
-                                color = (0, 255, 0) # Green
-                                label = f"ACCESS GRANTED ({similarity:.2f})"
-                            else:
-                                color = (0, 165, 255) # Orange
-                                label = f"UNKNOWN PERSON ({similarity:.2f})"
-                                
-                            cv2.rectangle(display_image, (flip_xmin, exp_ymin), (flip_xmax, exp_ymax), color, 3)
+                        is_match = similarity >= MATCH_THRESHOLD
+                        
+                        # --- 4. FORMAT THE 4 REQUESTED OUTPUT STATES ---
+                        if is_real and is_match:
+                            label = f"REAL, MATCH (Sim: {similarity*100:.0f}%)"
+                            color = (0, 255, 0) # Green
+                        elif is_real and not is_match:
+                            label = f"REAL, NO MATCH (Sim: {similarity*100:.0f}%)"
+                            color = (0, 165, 255) # Orange
+                        elif not is_real and is_match:
+                            label = f"FAKE, MATCH (Sim: {similarity*100:.0f}%)"
+                            color = (0, 0, 255) # Red
                         else:
-                            label = "ALIGNMENT FAILED"
-                            color = (0, 0, 255)
+                            label = f"FAKE, NO MATCH (Sim: {similarity*100:.0f}%)"
+                            color = (0, 0, 255) # Red
+                            
+                        cv2.rectangle(display_image, (tight_flip_xmin, ymin), (tight_flip_xmax, ymin + box_h), color, 3)
+                    else:
+                        label = "ALIGNMENT FAILED"
+                        color = (0, 0, 255)
 
                     # --- DRAW UI ---
                     text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-                    cv2.rectangle(display_image, (flip_xmin, exp_ymin - text_size[1] - 10), 
-                                  (flip_xmin + text_size[0], exp_ymin), color, -1)
-                    cv2.putText(display_image, label, (flip_xmin, exp_ymin - 5), 
+                    cv2.rectangle(display_image, (tight_flip_xmin, ymin - text_size[1] - 10), 
+                                  (tight_flip_xmin + text_size[0], ymin), color, -1)
+                    cv2.putText(display_image, label, (tight_flip_xmin, ymin - 5), 
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             cv2.imshow('Final System: Anti-Spoof + Recognition', display_image)
