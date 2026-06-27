@@ -496,34 +496,34 @@ sequenceDiagram
 ## 10. Implementation Phases
 
 ### Phase 1 — Database & CSV Seeding *(Backend)*
-- [ ] Extend `users` table schema (add `email`, `role`, `designation`, `department`, `face_status`)
-- [ ] Create `face_requests` table
-- [ ] Build CSV loader that parses all 4 CSV files and upserts into `users`
-- [ ] Add `/api/v1/auth/lookup` endpoint
-- [ ] Add `/api/v1/admin/seed-csv` endpoint
-- [ ] Migrate existing `faculty` data to new `users` schema
+- [x] Extend `users` table schema (add `email`, `role`, `designation`, `department`, `face_status`)
+- [x] Create `face_requests` table
+- [x] Build CSV loader that parses all 4 CSV files and upserts into `users`
+- [x] Add `/api/v1/auth/lookup` endpoint
+- [x] Add `/api/v1/admin/seed-csv` endpoint
+- [x] Migrate existing `faculty` data to new `users` schema
 
 ### Phase 2 — Login Page *(Frontend)*
-- [ ] Build `/login.html` with username input
-- [ ] Auto-lookup on input → show name + redirect
-- [ ] Handle "not found" → manual registration form
-- [ ] Store session in `localStorage` (user ID + role)
+- [x] Build `/login.html` with username input
+- [x] Auto-lookup on input → show name + redirect
+- [x] Handle "not found" → manual registration form
+- [x] Store session in `localStorage` (user ID + role)
 
 ### Phase 3 — User Dashboard *(Frontend)*
-- [ ] Build `/dashboard.html` with adaptive layout based on `face_status`
-- [ ] Profile card (name, dept, email, status)
-- [ ] Face registration flow (webcam → capture → register)
-- [ ] Attendance scan flow (auto-capture → verify → log)
-- [ ] Attendance history table
-- [ ] Photo update request form
-- [ ] Issue report form
+- [x] Build `/dashboard.html` with adaptive layout based on `face_status`
+- [x] Profile card (name, dept, email, status)
+- [x] Face registration flow (webcam → capture → register)
+- [x] Attendance scan flow (auto-capture → verify → log)
+- [x] Attendance history table
+- [x] Photo update request form
+- [x] Issue report form
 
 ### Phase 4 — Admin Dashboard *(Frontend + Backend)*
-- [ ] Build `/admin.html` with tabbed interface
-- [ ] User Management tab (search, filter, upload face for user)
-- [ ] Pending Requests tab (approve/reject with side-by-side comparison)
-- [ ] Attendance Reports tab (date picker, present/absent counts)
-- [ ] Add `/api/v1/register-admin`, `/api/v1/face-requests/*` endpoints
+- [x] Build `/admin.html` with tabbed interface
+- [x] User Management tab (search, filter, upload face for user)
+- [x] Pending Requests tab (approve/reject with side-by-side comparison)
+- [x] Attendance Reports tab (date picker, present/absent counts)
+- [x] Add `/api/v1/register-admin`, `/api/v1/face-requests/*` endpoints
 
 ### Phase 5 — Polish & Production
 - [ ] Add role-based access control middleware
