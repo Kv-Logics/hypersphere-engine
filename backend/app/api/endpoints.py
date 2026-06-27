@@ -301,3 +301,17 @@ async def get_attendance(user_id: Optional[str] = None):
     query = query.order_by(attendance_records.c.timestamp.desc()).limit(50)
     records = await database.fetch_all(query)
     return records
+
+@router.post("/admin/seed-csv", status_code=status.HTTP_200_OK)
+async def manual_seed_csv():
+    try:
+        from app.main import PROJECT_ROOT
+        from app.core.csv_loader import seed_users_from_csv
+        await seed_users_from_csv(PROJECT_ROOT)
+        return {"status": "success", "message": "CSV users database seeding triggered successfully."}
+    except Exception as e:
+        logger.error(f"Manual CSV seeding failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"CSV seeding failed: {str(e)}"
+        )
