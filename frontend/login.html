@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Hypersphere Control Plane</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f8f9fa;
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+            overflow-y: auto;
+        }
+
+        .login-wrapper {
+            width: 100%;
+            max-width: 440px;
+            padding: 1.5rem;
+        }
+
+        .login-card {
+            background-color: var(--surface);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.05);
+            padding: 2.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .login-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary) 0%, #00b0ff 100%);
+        }
+
+        .brand-header {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand-icon {
+            color: var(--primary);
+            background-color: var(--primary-light);
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 0.5rem;
+            box-shadow: 0 4px 12px rgba(25, 118, 210, 0.15);
+        }
+
+        .brand-header h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: var(--text-primary);
+            margin: 0;
+            text-transform: uppercase;
+        }
+
+        .brand-header p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+        }
+
+        .form-group label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            padding: 0.85rem 1rem 0.85rem 2.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background-color: #fafafa;
+            font-size: 1rem;
+            color: var(--text-primary);
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .input-wrapper input:focus {
+            border-color: var(--primary);
+            background-color: var(--surface);
+            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 0.85rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        .lookup-status {
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            min-height: 20px;
+            transition: all 0.2s ease;
+        }
+
+        .status-searching {
+            color: var(--primary);
+        }
+
+        .status-found {
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        .status-notfound {
+            color: var(--warning);
+        }
+
+        /* Slide down register section */
+        .register-section {
+            display: none;
+            flex-direction: column;
+            gap: 1.25rem;
+            border-top: 1px solid var(--divider);
+            padding-top: 1.25rem;
+            animation: slideDown 0.3s ease forwards;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .btn-full {
+            width: 100%;
+            justify-content: center;
+            padding: 0.85rem;
+            font-size: 0.95rem;
+        }
+
+        .footer-note {
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <!-- Brand Header -->
+            <div class="brand-header">
+                <div class="brand-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                </div>
+                <h1>Hypersphere Control Plane</h1>
+                <p>NITT Biometric Portal</p>
+            </div>
+
+            <!-- Username Input -->
+            <div class="form-group">
+                <label for="usernameInput">Username / Email Prefix</label>
+                <div class="input-wrapper">
+                    <span class="input-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </span>
+                    <input type="text" id="usernameInput" placeholder="e.g. jpeter" autocomplete="off" oninput="handleUsernameInput(event)">
+                </div>
+                <div id="lookupStatus" class="lookup-status"></div>
+            </div>
+
+            <!-- Manual Registration Form (revealed when lookup fails) -->
+            <form id="registerForm" class="register-section" onsubmit="handleManualRegister(event)">
+                <div class="form-group">
+                    <label for="fullName">Full Name</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 1 0 0 10 5 5 0 1 0 0-10zM20 21a8 8 0 0 0-16 0"/></svg>
+                        </span>
+                        <input type="text" id="fullName" placeholder="e.g. Dr. A. John Peter" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="emailInput">NITT Email</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        </span>
+                        <input type="email" id="emailInput" placeholder="e.g. jpeter@nitt.edu" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-contained btn-full">
+                    Register Profile & Login
+                </button>
+            </form>
+        </div>
+
+        <div class="footer-note">
+            Department of Computer Applications, NIT Trichy
+        </div>
+    </div>
+
+    <script>
+        let debounceTimer;
+        let activeUsername = "";
+
+        // Check if user is already logged in
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedUser = localStorage.getItem("user");
+            if (savedUser) {
+                try {
+                    const user = JSON.parse(savedUser);
+                    redirectDashboard(user);
+                } catch (e) {
+                    localStorage.removeItem("user");
+                }
+            }
+        });
+
+        function handleUsernameInput(event) {
+            const statusDiv = document.getElementById("lookupStatus");
+            const regSection = document.getElementById("registerForm");
+            
+            let val = event.target.value.trim().toLowerCase();
+            // Clean email inputs automatically to username prefix
+            if (val.includes("@")) {
+                val = val.split("@")[0];
+            }
+
+            activeUsername = val;
+
+            // Hide registration form initially when typing
+            regSection.style.display = "none";
+            
+            if (!val) {
+                statusDiv.innerHTML = "";
+                return;
+            }
+
+            statusDiv.innerHTML = `<span class="status-searching">Checking database...</span>`;
+
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                performLookup(val);
+            }, 500);
+        }
+
+        async function performLookup(username) {
+            const statusDiv = document.getElementById("lookupStatus");
+            const regSection = document.getElementById("registerForm");
+
+            try {
+                const res = await fetch(`/api/v1/auth/lookup?username=${username}`);
+                if (res.status === 200) {
+                    const data = await res.json();
+                    statusDiv.innerHTML = `<span class="status-found">✓ Welcome back, ${data.name}! Redirecting...</span>`;
+                    
+                    // Save to local session
+                    localStorage.setItem("user", JSON.stringify(data));
+                    
+                    setTimeout(() => {
+                        redirectDashboard(data);
+                    }, 1000);
+                } else if (res.status === 404) {
+                    statusDiv.innerHTML = `<span class="status-notfound">Username not found. Fill details below:</span>`;
+                    
+                    // Prefill registration fields
+                    document.getElementById("emailInput").value = `${username}@nitt.edu`;
+                    
+                    // Show manual registration form
+                    regSection.style.display = "flex";
+                } else {
+                    statusDiv.innerHTML = `<span class="status-notfound">Error searching database.</span>`;
+                }
+            } catch (err) {
+                statusDiv.innerHTML = `<span class="status-notfound">Connection error.</span>`;
+            }
+        }
+
+        async function handleManualRegister(event) {
+            event.preventDefault();
+            const name = document.getElementById("fullName").value.trim();
+            const email = document.getElementById("emailInput").value.trim();
+
+            if (!activeUsername || !name || !email) return;
+
+            try {
+                const res = await fetch('/api/v1/auth/register-manual', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: activeUsername,
+                        name: name,
+                        email: email
+                    })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    localStorage.setItem("user", JSON.stringify(data));
+                    redirectDashboard(data);
+                } else {
+                    const err = await res.json();
+                    alert(`Registration failed: ${err.detail || "Unknown error"}`);
+                }
+            } catch (err) {
+                alert("Connection failed. Could not register profile.");
+            }
+        }
+
+        function redirectDashboard(user) {
+            if (user.role === "admin") {
+                window.location.href = `/admin.html?user=${user.id}`;
+            } else {
+                window.location.href = `/dashboard.html?user=${user.id}`;
+            }
+        }
+    </script>
+</body>
+</html>

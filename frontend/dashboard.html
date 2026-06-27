@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Dashboard | Hypersphere Control Plane</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        body {
+            height: auto;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+        }
+
+        .dashboard-container {
+            max-width: 1280px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+            display: grid;
+            grid-template-columns: 320px 1fr 340px;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .profile-avatar-giant {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background-color: var(--primary-light);
+            color: var(--primary-dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.8rem;
+            margin: 0 auto 1rem auto;
+            border: 3px solid rgba(25, 118, 210, 0.15);
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.4rem 0.85rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            width: fit-content;
+            margin: 0.5rem auto 0 auto;
+        }
+
+        .status-none {
+            background-color: #ffebee;
+            color: var(--error);
+        }
+
+        .status-registered {
+            background-color: #e8f5e9;
+            color: var(--success);
+        }
+
+        .status-pending {
+            background-color: #fff3e0;
+            color: var(--warning);
+        }
+
+        .action-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-card {
+            background-color: var(--surface);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0px 8px 32px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 460px;
+            padding: 2rem;
+            position: relative;
+            animation: scaleUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes scaleUp {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--divider);
+            padding-bottom: 0.75rem;
+        }
+
+        .modal-header h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+
+        .close-modal:hover {
+            background-color: #f1f3f4;
+        }
+
+        /* Attendance Table styling */
+        .attendance-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+
+        .attendance-table th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--divider);
+        }
+
+        .attendance-table td {
+            padding: 0.75rem 0.5rem;
+            border-bottom: 1px solid var(--divider);
+            color: var(--text-primary);
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .indicator-confirmed {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .indicator-rejected {
+            background-color: var(--error);
+            color: white;
+        }
+
+        /* Pending View Overlay */
+        .pending-lock-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.95);
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .pending-lock-overlay svg {
+            color: var(--warning);
+            margin-bottom: 1rem;
+        }
+
+        .pending-lock-overlay h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .pending-lock-overlay p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            max-width: 320px;
+            line-height: 1.4;
+        }
+
+        /* Giant Success Flash */
+        .attendance-success-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(46, 125, 50, 0.95) 0%, rgba(27, 94, 32, 0.95) 100%);
+            color: white;
+            z-index: 15;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .attendance-success-overlay h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 1rem 0 0.5rem 0;
+        }
+
+        .attendance-success-overlay p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .circle-checkmark {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: 3px solid white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: scalePulse 0.5s ease-out;
+        }
+
+        @keyframes scalePulse {
+            0% { transform: scale(0.6); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header Bar -->
+    <header class="app-bar">
+        <div class="logo-area">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <h1>HYPERSPHERE CONTROL PLANE</h1>
+            <p>NIT Trichy Attendance Portal</p>
+        </div>
+        <button onclick="handleLogout()" class="btn btn-outlined" style="font-size: 0.75rem;">
+            Logout
+        </button>
+    </header>
+
+    <div class="dashboard-container">
+        <!-- Left Column: User Profile -->
+        <aside class="sidebar" style="width:100%;">
+            <!-- Profile Card -->
+            <div class="section-card" style="text-align: center; padding: 1.5rem 1.25rem;">
+                <div id="profileAvatar" class="profile-avatar-giant">-</div>
+                <h2 id="profileName" style="margin-bottom: 0.25rem; font-size: 1.15rem; border:none; padding:0; text-align:center;">Loading...</h2>
+                <div id="profileUsername" style="font-family:'JetBrains Mono', monospace; font-size: 0.8rem; color:var(--text-secondary); margin-bottom: 0.75rem;">@username</div>
+                
+                <div style="text-align: left; margin-top: 1rem; border-top: 1px solid var(--divider); padding-top: 1rem; font-size: 0.85rem;">
+                    <div style="margin-bottom: 0.5rem;"><span style="color:var(--text-secondary); font-weight:600;">Department:</span> <span id="profileDept">-</span></div>
+                    <div style="margin-bottom: 0.5rem;"><span style="color:var(--text-secondary); font-weight:600;">Designation:</span> <span id="profileDesignation">-</span></div>
+                    <div><span style="color:var(--text-secondary); font-weight:600;">Email:</span> <span id="profileEmail" style="word-break: break-all;">-</span></div>
+                </div>
+            </div>
+
+            <!-- Face Status Card -->
+            <div class="section-card" style="text-align: center;">
+                <h2>Face Registration</h2>
+                <div id="faceStatusBadge" class="status-pill status-none">No Face Registered</div>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.75rem;" id="faceStatusDescription">
+                    You must register your face using a webcam to activate biometric verification.
+                </p>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="section-card">
+                <h2>Quick Actions</h2>
+                <div class="action-list">
+                    <button onclick="openModal('photoModal')" class="btn btn-outlined" id="updatePhotoBtn" style="justify-content: flex-start; gap: 0.5rem; font-size: 0.85rem;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        Request Photo Update
+                    </button>
+                    <button onclick="openModal('issueModal')" class="btn btn-outlined" style="justify-content: flex-start; gap: 0.5rem; font-size: 0.85rem; border-color: rgba(211, 47, 47, 0.2); color: var(--error);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Report Matching Issue
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center Column: Camera Feed -->
+        <main class="viewfinder-section">
+            <div class="video-container-card" style="position: relative;">
+                <div class="video-wrapper-header">
+                    <span id="viewfinderTitle">Biometric Attendance Terminal</span>
+                    <span id="livePulse" class="live-pulse" style="display:none;"><span class="pulse-dot"></span> LIVE SCANNING</span>
+                </div>
+
+                <!-- Video Frame -->
+                <div class="video-wrapper">
+                    <!-- Pending Review Lock screen -->
+                    <div class="pending-lock-overlay" id="pendingLockOverlay">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        <h3>Awaiting Admin Review</h3>
+                        <p>Your uploaded face photo is currently under verification by the CDI Administrator. Camera functions are locked in this state.</p>
+                    </div>
+
+                    <!-- Attendance Mark Success flash screen -->
+                    <div class="attendance-success-overlay" id="attendanceSuccessOverlay">
+                        <div class="circle-checkmark">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </div>
+                        <h2>Attendance Logged!</h2>
+                        <p>Have a great day ahead.</p>
+                    </div>
+
+                    <!-- Actual webcam/canvas elements -->
+                    <video id="webcam" autoplay playsinline muted></video>
+                    <canvas id="overlayCanvas"></canvas>
+                </div>
+
+                <!-- Registration Instruction Overlay or Buttons -->
+                <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div id="statusLog" style="font-size: 0.85rem; color: var(--text-secondary); text-align: center; font-style: italic; min-height: 20px;">
+                        Camera is inactive.
+                    </div>
+                    <div style="display: flex; justify-content: center; gap: 1rem; margin-top: 0.5rem;">
+                        <button id="registerFaceBtn" onclick="startSelfRegistration()" class="btn btn-contained" style="display: none; gap: 0.5rem;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                            Register My Face
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Column: Attendance logs -->
+        <aside class="sidebar" style="width:100%;">
+            <div class="section-card" style="flex: 1; min-height: 400px;">
+                <h2>Attendance Logs</h2>
+                <div style="overflow-y: auto; max-height: 480px; margin-top: 0.5rem;">
+                    <table class="attendance-table">
+                        <thead>
+                            <tr>
+                                <th>Date/Time</th>
+                                <th style="text-align: center;">Status</th>
+                                <th style="text-align: right;">Match</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendanceHistory">
+                            <tr>
+                                <td colspan="3" style="text-align: center; color: var(--text-secondary); padding: 2rem 0;">
+                                    No logs loaded.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Modal: Request Photo Update -->
+    <div id="photoModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Request Face Update</h3>
+                <button class="close-modal" onclick="closeModal('photoModal')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <form id="photoRequestForm" onsubmit="submitFaceRequest('update', event)">
+                <div class="form-group" style="margin-bottom: 1.25rem;">
+                    <label for="updateFile">Upload Clear Photo</label>
+                    <input type="file" id="updateFile" accept="image/*" required style="border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 6px; font-size: 0.9rem;">
+                </div>
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label for="updateMessage">Reason / Note to Admin</label>
+                    <textarea id="updateMessage" placeholder="e.g. Bad lighting in my initial capture. Uploading a clearer photo." rows="3" style="border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 6px; font-size: 0.9rem; resize: none; outline:none;" required></textarea>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+                    <button type="button" class="btn btn-outlined" onclick="closeModal('photoModal')">Cancel</button>
+                    <button type="submit" class="btn btn-contained">Submit Request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Report Issue -->
+    <div id="issueModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Report Matching Issue</h3>
+                <button class="close-modal" onclick="closeModal('issueModal')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <form id="issueRequestForm" onsubmit="submitFaceRequest('issue_report', event)">
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label for="issueMessage">Describe the Issue</label>
+                    <textarea id="issueMessage" placeholder="Describe the matching problem (e.g. system constantly rejects my face at the main door under sunlight)." rows="4" style="border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 6px; font-size: 0.9rem; resize: none; outline:none;" required></textarea>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+                    <button type="button" class="btn btn-outlined" onclick="closeModal('issueModal')">Cancel</button>
+                    <button type="submit" class="btn btn-contained" style="background-color: var(--error);">Submit Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/dashboard.js" defer></script>
+</body>
+</html>

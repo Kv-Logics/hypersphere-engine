@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hypersphere Biometric Control</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script>
+        const savedUser = localStorage.getItem("user");
+        if (!savedUser) {
+            window.location.href = "/login.html";
+        } else {
+            try {
+                const user = JSON.parse(savedUser);
+                if (user.role === "admin") {
+                    window.location.href = `/admin.html?user=${user.id}`;
+                } else {
+                    window.location.href = `/dashboard.html?user=${user.id}`;
+                }
+            } catch (e) {
+                localStorage.removeItem("user");
+                window.location.href = "/login.html";
+            }
+        }
+    </script>
+</head>
+<body>
+    <!-- Header Bar -->
+    <header class="app-bar">
+        <div class="logo-area">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <h1>HYPERSPHERE CONTROL PLANE</h1>
+            <p>Biometric Authentication Server</p>
+        </div>
+        <div class="status-badge">
+            <span class="dot"></span> Database Active
+        </div>
+    </header>
+
+    <!-- Main Window -->
+    <div class="main-content">
+        <!-- Column 1: Config, Registration & Logs -->
+        <aside class="sidebar left-sidebar">
+            <div class="section-card">
+                <h2>Enroll Faculty Member</h2>
+                <div class="input-field">
+                    <label for="regId">Faculty ID</label>
+                    <input type="text" id="regId" placeholder="e.g. FAC204" required>
+                </div>
+                <div class="input-field" style="margin-top: 0.5rem;">
+                    <label for="regName">Full Name</label>
+                    <input type="text" id="regName" placeholder="e.g. Dr. Keerthi" required>
+                </div>
+                <div class="input-field" style="margin-top: 0.5rem;">
+                    <label for="regFile">Local Image File (Optional Upload)</label>
+                    <input type="file" id="regFile" accept="image/*" class="file-input">
+                </div>
+                <button class="btn btn-contained" onclick="registerFaculty()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                    Enroll Profile
+                </button>
+            </div>
+
+            <div class="section-card terminal-card">
+                <h2>System Event Log</h2>
+                <div class="terminal-view" id="terminal">
+                    <div class="log-line">[<span class="log-time">00:00:00</span>] Biometric service plane initialized.</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Column 2: Video Viewfinder -->
+        <main class="viewfinder-section">
+            <div class="video-container-card">
+                <div class="video-wrapper-header">
+                    <span>Live Video Capture Feed</span>
+                    <span class="live-pulse" id="livePulse" style="display: none;">● LIVE SCANNING</span>
+                </div>
+                <div class="video-wrapper" id="videoWrapper">
+                    <div class="laser-line" id="laserLine"></div>
+                    <video id="webcamVideo" autoplay playsinline></video>
+                    <canvas id="webcamCanvas"></canvas>
+                    <div class="video-placeholder" id="placeholder">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width: 48px; height: 48px; color: var(--text-secondary);"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                        <p>Webcam is currently inactive.<br>Start the camera to begin live face capture.</p>
+                    </div>
+                </div>
+                
+                <!-- Local Image Verification Selection -->
+                <div class="file-verify-container">
+                    <label for="verFile" class="file-verify-label">Or verify via local image file:</label>
+                    <input type="file" id="verFile" accept="image/*" class="file-input" onchange="verifyUploadedImage()">
+                </div>
+
+                <div class="action-bar">
+                    <button class="btn btn-outlined" id="startCamBtn" onclick="startWebcam()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                        Start Camera
+                    </button>
+                    <button class="btn btn-outlined btn-danger-outlined" id="stopCamBtn" onclick="stopWebcam()" style="display:none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                        Stop Camera
+                    </button>
+                    <button class="btn btn-contained" onclick="verifyPresentation()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Capture & Verify
+                    </button>
+                    <button class="btn btn-outlined" id="liveDemoBtn" onclick="toggleLiveDemo()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                        Start Live Demo
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Column 3: Verification Results & Faculty Registry -->
+        <aside class="sidebar right-sidebar">
+            <div class="section-card" style="flex: 1.2;">
+                <h2>Verification Verdict</h2>
+                <div class="results-box" id="resultsBox">
+                    <div class="results-header" id="resStatus">VERDICT: MATCH</div>
+                    <div class="res-profile-display">
+                        <div class="res-avatar" id="resAvatar">?</div>
+                        <div class="res-info">
+                            <div class="res-name" id="resName">-</div>
+                        </div>
+                    </div>
+
+                    <div class="metric-block">
+                        <div class="metric-info">
+                            <span>Liveness Confidence:</span>
+                            <span id="resLiveness" class="metric-val">-</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="livenessProgress"></div>
+                        </div>
+                    </div>
+
+                    <div class="metric-block">
+                        <div class="metric-info">
+                            <span>Face Similarity:</span>
+                            <span id="resSimilarity" class="metric-val">-</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="similarityProgress"></div>
+                        </div>
+                    </div>
+
+                    <div class="metric-block">
+                        <div class="metric-info">
+                            <span>Frame Quality:</span>
+                            <span id="resQuality" class="metric-val">-</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="qualityProgress"></div>
+                        </div>
+                    </div>
+
+                    <div class="feedback-box" id="resFeedbackRow" style="display:none;">
+                        <div class="feedback-title">System Advice</div>
+                        <div class="feedback-text" id="resFeedback">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-card registry-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider); padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                    <h2 style="margin-bottom: 0; border-bottom: none; padding-bottom: 0;">Enrolled Profiles</h2>
+                    <a href="/registry.html" target="_blank" class="btn btn-outlined" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; text-transform: uppercase; display: inline-flex; align-items: center; gap: 0.25rem;">
+                        View All
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                </div>
+                <div class="faculty-list-container" id="facultyList">
+                    <div class="empty-list">No profiles registered in DB.</div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/main.js" defer></script>
+</body>
+</html>
