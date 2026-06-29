@@ -440,12 +440,22 @@ async function registerCapture() {
 }
 
 async function verifyAttendanceCapture() {
-    statusLog.innerText = "Analyzing face liveness & matching...";
+    statusLog.innerText = "Capturing multi-frame samples (Hold still)...";
     try {
-        const blob = await captureFrameBlob();
+        const blobs = [];
+        for (let i = 0; i < 5; i++) {
+            const blob = await captureFrameBlob();
+            blobs.push(blob);
+            // Wait 200ms between frames to capture variation
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        statusLog.innerText = "Analyzing liveness & biometric matches...";
         const formData = new FormData();
         formData.append("device_id", "Webcam_Dashboard");
-        formData.append("file", blob, "verify.jpg");
+        blobs.forEach((blob, idx) => {
+            formData.append("files", blob, `verify_${idx}.jpg`);
+        });
         
         const res = await fetch("/api/v1/verify", {
             method: "POST",
@@ -474,6 +484,11 @@ async function verifyAttendanceCapture() {
                 setTimeout(() => {
                     successOverlay.style.display = "none";
                 }, 4000);
+            } else if (data.status === "MANUAL_REVIEW" && data.candidate && data.candidate.faculty_id === activeUser.id) {
+                statusLog.innerText = "Check-in logged (Flagged for Manual Review).";
+                attendanceMarked = true;
+                stopWebcam();
+                fetchAttendanceHistory(activeUser.id);
             } else {
                 statusLog.innerText = "Face mismatch or liveness rejected. Retrying...";
             }

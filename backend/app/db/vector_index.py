@@ -49,10 +49,11 @@ class VectorIndexManager:
             faculty_id=faculty_id,
             embedding=emb_list,
             model_version=model_version,
-            drift_review_pending=drift_review_pending
+            drift_review_pending=drift_review_pending,
+            raw_norm=float(norm)
         )
         await database.execute(insert_query)
-        logger.info(f"Vector for faculty {faculty_id} saved to PostgreSQL face_embeddings (Pending review: {drift_review_pending}).")
+        logger.info(f"Vector for faculty {faculty_id} saved to PostgreSQL face_embeddings (Pending review: {drift_review_pending}, Raw norm: {norm:.2f}).")
 
     async def search(self, query_embedding: np.ndarray, top_k=5):
         """Searches pgvector index in face_embeddings table for query_embedding. Returns list of (faculty_id, similarity_score)."""

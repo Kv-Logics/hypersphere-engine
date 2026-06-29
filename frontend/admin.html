@@ -256,6 +256,14 @@
                 Pending Requests <span id="pendingBadge" class="badge"
                     style="background-color: var(--warning); color: var(--surface); display:none;">0</span>
             </button>
+            <button onclick="switchTab('tabDrifts')" class="nav-tab-btn" id="btnTabDrifts">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                </svg>
+                Drift Reviews <span id="driftBadge" class="badge"
+                    style="background-color: var(--error); color: var(--surface); display:none;">0</span>
+            </button>
             <button onclick="switchTab('tabReports')" class="nav-tab-btn" id="btnTabReports">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -338,6 +346,21 @@
                     <div id="requestsContainer">
                         <div style="text-align:center; padding: 3rem 0; color: var(--text-secondary);">
                             No pending face registration/update requests.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Pending Drift Reviews -->
+            <div id="tabDrifts" class="tab-content">
+                <div class="section-card">
+                    <h2 style="margin-bottom:1.5rem;">Biometric Drift Reviews</h2>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+                        The system flags verification attempts where matches are highly confident but slightly drifted. Approve to save the new embedding, or reject to discard.
+                    </p>
+                    <div id="driftsContainer">
+                        <div style="text-align:center; padding: 3rem 0; color: var(--text-secondary);">
+                            No pending embedding drift updates.
                         </div>
                     </div>
                 </div>

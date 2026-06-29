@@ -31,6 +31,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Load initial tab data
     loadAllUsers();
     loadPendingRequests();
+    loadPendingDrifts();
     loadDailyReport();
 });
 
@@ -45,6 +46,7 @@ function switchTab(tabId) {
     // Highlight button
     if (tabId === 'tabUsers') document.getElementById('btnTabUsers').classList.add('active');
     if (tabId === 'tabRequests') document.getElementById('btnTabRequests').classList.add('active');
+    if (tabId === 'tabDrifts') document.getElementById('btnTabDrifts').classList.add('active');
     if (tabId === 'tabReports') document.getElementById('btnTabReports').classList.add('active');
     if (tabId === 'tabTester') document.getElementById('btnTabTester').classList.add('active');
 
@@ -150,6 +152,91 @@ async function loadPendingRequests() {
         
     } catch(err) {
         console.error("Failed to load requests:", err);
+    }
+}
+
+// Fetch pending drift review queue (Fix 14)
+async function loadPendingDrifts() {
+    try {
+        const res = await fetch("/api/v1/admin/drift-requests");
+        if (!res.ok) return;
+        
+        const driftRequests = await res.json();
+        
+        // Update badge
+        const badge = document.getElementById("driftBadge");
+        if (badge) {
+            badge.innerText = driftRequests.length;
+            badge.style.display = driftRequests.length > 0 ? "inline-flex" : "none";
+        }
+        
+        renderDriftRequests(driftRequests);
+        
+    } catch(err) {
+        console.error("Failed to load drift requests:", err);
+    }
+}
+
+function renderDriftRequests(list) {
+    const container = document.getElementById("driftsContainer");
+    if (!container) return;
+    container.innerHTML = "";
+    
+    if (list.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding: 3rem 0; color: var(--text-secondary);">
+                No pending embedding drift updates to review.
+            </div>
+        `;
+        return;
+    }
+    
+    list.forEach(req => {
+        const card = document.createElement("div");
+        card.className = "request-card";
+        
+        card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 1px solid var(--divider); padding-bottom: 0.75rem;">
+                <div>
+                    <h3 style="margin:0; font-family:'Outfit', sans-serif; font-size:1.1rem; color:var(--text-primary);">${req.name} (@${req.faculty_id})</h3>
+                    <p style="margin:0.2rem 0 0 0; font-size:0.8rem; color:var(--text-secondary);">Model Version: ${req.model_version} | Status: DRIFT REVIEW PENDING</p>
+                </div>
+                <div style="font-size:0.8rem; color:var(--text-secondary);">${new Date(req.created_at).toLocaleString()}</div>
+            </div>
+            
+            <div style="font-size: 0.9rem; color:var(--text-primary); margin: 0.5rem 0;">
+                <strong>Detection Info:</strong> Verification matched user but embedding started to drift. A new candidate vector has been captured.
+            </div>
+            
+            <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top: 1rem;">
+                <button onclick="processDriftRequest(${req.id}, 'reject')" class="btn btn-outlined" style="border-color: rgba(211,47,47,0.3); color:var(--error);">
+                    Reject & Discard
+                </button>
+                <button onclick="processDriftRequest(${req.id}, 'approve')" class="btn btn-contained" style="background-color: var(--success);">
+                    Approve & Save Embedding
+                </button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+async function processDriftRequest(reqId, decision) {
+    try {
+        const res = await fetch(`/api/v1/admin/drift-requests/${reqId}/${decision}`, {
+            method: "POST"
+        });
+        
+        if (res.ok) {
+            alert(`Drift embedding update successfully ${decision}d.`);
+            loadPendingDrifts();
+            loadAllUsers();
+        } else {
+            const err = await res.json();
+            alert(`Operation failed: ${err.detail || "Error processing drift request"}`);
+        }
+    } catch(err) {
+        alert("Operation failed: connection error.");
     }
 }
 
@@ -885,43 +972,51 @@ async function captureAndVerifyTester() {
 
     if (!videoEl || videoEl.readyState < 2) return;
 
-    status.innerText = "Capturing face scan...";
+    status.innerText = "Capturing multi-frame samples (Hold still)...";
 
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = videoEl.videoWidth;
-    tempCanvas.height = videoEl.videoHeight;
-    const tempCtx = tempCanvas.getContext("2d");
-    tempCtx.drawImage(videoEl, 0, 0, tempCanvas.width, tempCanvas.height);
+    try {
+        const blobs = [];
+        for (let i = 0; i < 5; i++) {
+            const tempCanvas = document.createElement("canvas");
+            tempCanvas.width = videoEl.videoWidth;
+            tempCanvas.height = videoEl.videoHeight;
+            const tempCtx = tempCanvas.getContext("2d");
+            tempCtx.drawImage(videoEl, 0, 0, tempCanvas.width, tempCanvas.height);
+            const blob = await new Promise(resolve => tempCanvas.toBlob(resolve, "image/jpeg", 0.95));
+            if (blob) {
+                blobs.push(blob);
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
 
-    tempCanvas.toBlob(async (blob) => {
-        if (!blob) {
+        if (blobs.length === 0) {
             status.innerText = "Frame capture failed.";
             return;
         }
 
         const formData = new FormData();
         formData.append("device_id", "Admin_Webcam_Tester");
-        formData.append("file", blob, "tester_capture.jpg");
+        blobs.forEach((blob, idx) => {
+            formData.append("files", blob, `tester_capture_${idx}.jpg`);
+        });
 
         status.innerText = "Testing verification...";
-        try {
-            const res = await fetch("/api/v1/verify", {
-                method: "POST",
-                body: formData
-            });
+        const res = await fetch("/api/v1/verify", {
+            method: "POST",
+            body: formData
+        });
 
-            if (res.ok) {
-                const data = await res.json();
-                displayTesterResult(data);
-                status.innerText = "Scan completed successfully.";
-            } else {
-                const err = await res.json();
-                status.innerText = `Scan failed: ${err.detail || "Server error"}`;
-            }
-        } catch (err) {
-            status.innerText = "Scan failed: connection error.";
+        if (res.ok) {
+            const data = await res.json();
+            displayTesterResult(data);
+            status.innerText = `Scan completed successfully (Status: ${data.status}).`;
+        } else {
+            const err = await res.json();
+            status.innerText = `Scan failed: ${err.detail || "Server error"}`;
         }
-    }, "image/jpeg", 0.95);
+    } catch (err) {
+        status.innerText = "Scan failed: connection error.";
+    }
 }
 
 async function runFileTester() {

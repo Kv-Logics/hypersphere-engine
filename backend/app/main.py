@@ -25,6 +25,25 @@ async def lifespan(app: FastAPI):
     await init_db()
     await database.connect()
     
+    # Run dynamic calibration of EMBEDDING_QUALITY_THRESHOLD (Fix 6)
+    try:
+        rows = await database.fetch_all("SELECT raw_norm FROM face_embeddings WHERE raw_norm IS NOT NULL")
+        if len(rows) >= 10:
+            norms = [float(r["raw_norm"]) for r in rows]
+            mean_norm = sum(norms) / len(norms)
+            import math
+            variance = sum((x - mean_norm) ** 2 for x in norms) / len(norms)
+            std_norm = math.sqrt(variance)
+            calibrated_threshold = mean_norm - 2.0 * std_norm
+            # Clamp the threshold between 5.0 and 15.0 to keep checks in safe bounds
+            calibrated_threshold = max(5.0, min(15.0, calibrated_threshold))
+            settings.EMBEDDING_QUALITY_THRESHOLD = calibrated_threshold
+            logger.info(f"Calibrated EMBEDDING_QUALITY_THRESHOLD: {settings.EMBEDDING_QUALITY_THRESHOLD:.3f} (based on {len(norms)} norms, mean: {mean_norm:.3f}, std: {std_norm:.3f})")
+        else:
+            logger.info(f"Not enough registered embeddings for calibration (found {len(rows)}, need at least 10). Using default threshold: {settings.EMBEDDING_QUALITY_THRESHOLD}")
+    except Exception as e:
+        logger.error(f"Failed to calibrate embedding quality threshold during startup: {e}")
+    
     # Run CSV User Seeding
     try:
         from app.core.csv_loader import seed_users_from_csv

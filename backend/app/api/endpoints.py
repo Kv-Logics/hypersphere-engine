@@ -205,16 +205,42 @@ async def register_admin(
 @router.post("/verify", response_model=VerifyResponse)
 async def verify_face(
     device_id: str = Form(...),
-    file: UploadFile = File(...)
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None)
 ):
     now = datetime.now()
     
-    # 1. Process query image
-    try:
-        contents = await file.read()
-        _, embedding, liveness_score, quality_score, feedback = face_pipeline.process_image(contents, is_enrollment=False)
-    except Exception as e:
-        logger.warning(f"Verification pipeline failed: {e}")
+    # 1. Collect files (files parameter is used for multi-frame streams, file for single-frame fallback)
+    uploaded_files = []
+    if files:
+        uploaded_files = files
+    elif file:
+        uploaded_files = [file]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No verification image files provided."
+        )
+        
+    embeddings = []
+    liveness_scores = []
+    quality_scores = []
+    all_feedbacks = []
+    
+    # Process each frame in the batch
+    for f in uploaded_files:
+        try:
+            contents = await f.read()
+            _, emb, liveness_val, quality_val, feedback_list = face_pipeline.process_image(contents, is_enrollment=False)
+            embeddings.append(emb)
+            liveness_scores.append(liveness_val)
+            quality_scores.append(quality_val)
+            all_feedbacks.extend(feedback_list)
+        except Exception as e:
+            logger.warning(f"Frame processing failed: {e}")
+            continue
+
+    if not embeddings:
         # Log rejected attempt with no matched faculty
         db_query = attendance_records.insert().values(
             faculty_id=None,
@@ -228,8 +254,33 @@ async def verify_face(
         await database.execute(db_query)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Face verification failed: {str(e)}"
+            detail="Face verification failed: Could not extract face features from any of the provided frames."
         )
+
+    # Multi-Frame Averaging Logic (Fix 9)
+    # If multiple frames are provided, drop the one with the lowest quality score
+    import numpy as np
+    if len(embeddings) > 1:
+        min_q_idx = int(np.argmin(quality_scores))
+        embeddings.pop(min_q_idx)
+        quality_scores.pop(min_q_idx)
+        
+    # Calculate mean and normalize embedding
+    mean_emb = np.mean(embeddings, axis=0)
+    norm_mean = float(np.linalg.norm(mean_emb))
+    if norm_mean > 0:
+        embedding = mean_emb / norm_mean
+    else:
+        embedding = mean_emb
+        
+    # Average liveness score (filters transient spoofing/glitches)
+    liveness_score = float(np.mean(liveness_scores))
+    
+    # Average quality score of remaining frames
+    quality_score = float(np.mean(quality_scores))
+    
+    # Deduplicate feedback messages
+    feedback = list(sorted(set(all_feedbacks)))
 
     # 2. Check liveness (Anti-Spoofing)
     is_live = liveness_score >= settings.ANTISPOOF_THRESHOLD
@@ -248,10 +299,14 @@ async def verify_face(
     similarity_score = 0.0
     matched_faculty_id = None
     
+    # Adaptive Threshold calculation (Fix 10)
+    effective_match_threshold = settings.MATCH_THRESHOLD + (1.0 - quality_score) * 0.15
+    effective_match_threshold = max(settings.MATCH_THRESHOLD, effective_match_threshold)
+    
     if results:
         matched_faculty_id, similarity_score = results[0]
         # Check matching threshold
-        if similarity_score >= settings.MATCH_THRESHOLD:
+        if similarity_score >= effective_match_threshold:
             # Check ambiguity margin if there is a second match
             if len(results) > 1:
                 second_faculty_id, second_similarity = results[1]
@@ -281,7 +336,7 @@ async def verify_face(
         else:
             decision_status = "CONFIRMED" # Passed both liveness and match thresholds
             
-            # Drift check: If similarity score is between MATCH_THRESHOLD and 0.62,
+            # Drift check: If similarity score is between effective_match_threshold and 0.62,
             # capture the embedding as a drift review candidate!
             if similarity_score < 0.62:
                 # Check if there is already a pending drift request for this user
@@ -296,7 +351,7 @@ async def verify_face(
                             embedding=embedding,
                             drift_review_pending=True
                         )
-                        logger.info(f"Drift candidate detected for {matched_faculty_id} (similarity: {similarity_score:.3f}). Submitted for admin review.")
+                        logger.info(f"Drift candidate detected for {matched_faculty_id} (similarity: {similarity_score:.3f}, effective threshold: {effective_match_threshold:.3f}). Submitted for admin review.")
                     except Exception as e:
                         logger.error(f"Failed to submit drift candidate: {e}")
     else:
