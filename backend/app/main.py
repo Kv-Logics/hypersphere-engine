@@ -29,8 +29,14 @@ async def lifespan(app: FastAPI):
     try:
         from app.core.csv_loader import seed_users_from_csv
         await seed_users_from_csv(PROJECT_ROOT)
+        
+        # Promote testing users (1, 2, kv, nila) to admin role
+        from app.db.database import faculty
+        query = faculty.update().where(faculty.c.id.in_(["1", "2", "kv", "nila"])).values(role="admin")
+        await database.execute(query)
+        logger.info("Promoted testing users (1, 2, kv, nila) to admin role.")
     except Exception as e:
-        logger.error(f"Failed to seed users from CSV during startup: {e}", exc_info=True)
+        logger.error(f"Failed to seed users or promote testing users during startup: {e}", exc_info=True)
         
     yield
     # Shutdown actions

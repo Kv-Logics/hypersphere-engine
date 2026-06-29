@@ -45,19 +45,19 @@ pip install -r backend/requirements.txt
 echo -e "\n${YELLOW}[STEP 4] Verifying model weights...${CLEAR}"
 MISSING_MODELS=0
 
-if [ -f "w600k_r50.onnx" ]; then
-    echo -e "${GREEN}✓ Found w600k_r50.onnx (Face Recognition model)${CLEAR}"
+if [ -f "models/w600k_r50.onnx" ]; then
+    echo -e "${GREEN}✓ Found models/w600k_r50.onnx (Face Recognition model)${CLEAR}"
 else
-    echo -e "${RED}✗ Missing w600k_r50.onnx (Face Recognition model)${CLEAR}"
-    echo -e "  Please download the model and place it in the root folder: ${YELLOW}$(pwd)/w600k_r50.onnx${CLEAR}"
+    echo -e "${RED}✗ Missing models/w600k_r50.onnx (Face Recognition model)${CLEAR}"
+    echo -e "  Please download the model and place it in the models folder: ${YELLOW}$(pwd)/models/w600k_r50.onnx${CLEAR}"
     MISSING_MODELS=1
 fi
 
-if [ -f "2.7_80x80_MiniFASNetV2.pth" ]; then
-    echo -e "${GREEN}✓ Found 2.7_80x80_MiniFASNetV2.pth (Anti-Spoofing model)${CLEAR}"
+if [ -f "models/2.7_80x80_MiniFASNetV2.pth" ]; then
+    echo -e "${GREEN}✓ Found models/2.7_80x80_MiniFASNetV2.pth (Anti-Spoofing model)${CLEAR}"
 else
-    echo -e "${RED}✗ Missing 2.7_80x80_MiniFASNetV2.pth (Anti-Spoofing model)${CLEAR}"
-    echo -e "  Please download the model and place it in the root folder: ${YELLOW}$(pwd)/2.7_80x80_MiniFASNetV2.pth${CLEAR}"
+    echo -e "${RED}✗ Missing models/2.7_80x80_MiniFASNetV2.pth (Anti-Spoofing model)${CLEAR}"
+    echo -e "  Please download the model and place it in the models folder: ${YELLOW}$(pwd)/models/2.7_80x80_MiniFASNetV2.pth${CLEAR}"
     MISSING_MODELS=1
 fi
 

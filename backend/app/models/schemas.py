@@ -72,3 +72,13 @@ class HealthResponse(BaseModel):
     recognition_model_loaded: bool
     antispoof_model_loaded: bool
     faiss_available: bool
+
+class DriftRequestResponse(BaseModel):
+    id: int
+    faculty_id: str
+    name: str
+    model_version: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

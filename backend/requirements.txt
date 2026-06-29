@@ -8,7 +8,7 @@ databases[postgresql]
 numpy
 opencv-python-headless
 onnxruntime
-mediapipe==0.10.14
+mediapipe>=0.10.14
 python-multipart
 asyncpg
 pgvector

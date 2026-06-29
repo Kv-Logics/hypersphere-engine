@@ -20,12 +20,9 @@ COPY backend /app/backend
 # Copy frontend codebase
 COPY frontend /app/frontend
 
-# Copy local dependency modules (Anti-spoofing package)
-COPY SilentFace /app/SilentFace
 
 # Copy neural network model weight files (optional during build, can be mounted)
-COPY w600k_r50.onnx* /app/
-COPY 2.7_80x80_MiniFASNetV2.pth* /app/
+COPY models /app/models
 
 # Set working directory to backend root for execution context
 WORKDIR /app/backend

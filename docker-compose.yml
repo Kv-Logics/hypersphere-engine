@@ -25,8 +25,8 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:password@postgres:5432/face_attendance
-      - RECOGNITION_MODEL_PATH=/app/w600k_r50.onnx
-      - ANTISPOOF_MODEL_PATH=/app/2.7_80x80_MiniFASNetV2.pth
+      - RECOGNITION_MODEL_PATH=/app/models/w600k_r50.onnx
+      - ANTISPOOF_MODEL_PATH=/app/models/2.7_80x80_MiniFASNetV2.pth
     depends_on:
       postgres:
         condition: service_healthy

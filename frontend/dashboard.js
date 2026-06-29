@@ -14,40 +14,30 @@ const ctx = canvas.getContext("2d");
 // DOM elements
 const statusLog = document.getElementById("statusLog");
 
-window.addEventListener('DOMContentLoaded', () => {
-    // 1. Session verification
-    const urlParams = new URLSearchParams(window.location.search);
-    const userParam = urlParams.get('user');
-    const savedUserStr = localStorage.getItem("user");
-    
-    if (!userParam && !savedUserStr) {
-        window.location.href = "/login.html";
-        return;
-    }
-    
-    let targetUsername = userParam || "";
-    if (savedUserStr) {
-        try {
-            const savedUser = JSON.parse(savedUserStr);
-            if (!targetUsername) {
-                targetUsername = savedUser.id;
-            }
-        } catch(e) {
+window.addEventListener('DOMContentLoaded', async () => {
+    // 1. Session verification via backend cookie
+    try {
+        const res = await fetch("/api/v1/auth/me");
+        if (res.ok) {
+            activeUser = await res.json();
+            localStorage.setItem("user", JSON.stringify(activeUser));
+        } else {
             localStorage.removeItem("user");
+            window.location.href = "/login.html";
+            return;
         }
-    }
-    
-    if (!targetUsername) {
+    } catch (e) {
+        localStorage.removeItem("user");
         window.location.href = "/login.html";
         return;
     }
     
-    loadUserProfile(targetUsername);
+    loadUserProfile();
 });
 
-async function loadUserProfile(username) {
+async function loadUserProfile() {
     try {
-        const res = await fetch(`/api/v1/auth/lookup?username=${username}`);
+        const res = await fetch("/api/v1/auth/me");
         if (!res.ok) {
             localStorage.removeItem("user");
             window.location.href = "/login.html";
@@ -206,7 +196,7 @@ async function submitFaceRequest(type, event) {
         if (res.ok) {
             statusLog.innerText = "Request submitted successfully.";
             // Reload user details
-            loadUserProfile(activeUser.id);
+            loadUserProfile();
         } else {
             const err = await res.json();
             alert(`Submission failed: ${err.detail || "Server error"}`);
@@ -438,7 +428,7 @@ async function registerCapture() {
             
             // Reload user state
             setTimeout(() => {
-                loadUserProfile(activeUser.id);
+                loadUserProfile();
             }, 1500);
         } else {
             const err = await res.json();
@@ -496,7 +486,10 @@ async function verifyAttendanceCapture() {
     }
 }
 
-function handleLogout() {
+async function handleLogout() {
+    try {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+    } catch (e) {}
     localStorage.removeItem("user");
     window.location.href = "/login.html";
 }

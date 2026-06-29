@@ -2,48 +2,65 @@ import os
 import cv2
 import numpy as np
 import logging
-import hashlib
-import sys
+import threading
+from app.config import settings
+from app.core.scrfd import SCRFDetector
 
 logger = logging.getLogger(__name__)
 
-# Standard reference points for a 112x112 aligned face.
+# Standard 5-point reference points for a 112x112 aligned face (ArcFace standard).
 DST_PTS = np.array([
-    [38.2946, 51.6963], # Person's Right Eye
-    [73.5318, 51.5014], # Person's Left Eye
-    [56.0252, 71.7366]  # Nose Tip
+    [30.2946, 51.6963], # Person's Right Eye center
+    [65.5318, 51.5014], # Person's Left Eye center
+    [48.0252, 71.7366], # Nose Tip
+    [33.5493, 92.3655], # Person's Right Mouth Corner
+    [62.7299, 92.2041]  # Person's Left Mouth Corner
 ], dtype=np.float32)
 
+# 3D canonical reference model for frontal face pose estimation (generic proportions)
+FACE_3D_MODEL = np.array([
+    [-30.0,  32.0, -10.0],  # Right eye
+    [ 30.0,  32.0, -10.0],  # Left eye
+    [  0.0,   0.0,   0.0],  # Nose
+    [-25.0, -28.0,  -5.0],  # Right mouth
+    [ 25.0, -28.0,  -5.0]   # Left mouth
+], dtype=np.float64)
+
 class FacePipeline:
-    def __init__(self, recognition_model_path="w600k_r50.onnx", antispoof_model_path="2.7_80x80_MiniFASNetV2.pth"):
-        self.recog_path = recognition_model_path
-        self.as_path = antispoof_model_path
+    def __init__(self, 
+                 detection_model_path=None,
+                 recognition_model_path=None, 
+                 antispoof_model_path=None):
+                 
+        self.det_path = detection_model_path or settings.DETECTION_MODEL_PATH
+        self.recog_path = recognition_model_path or settings.RECOGNITION_MODEL_PATH
+        self.as_path = antispoof_model_path or settings.ANTISPOOF_MODEL_PATH
         
+        self.det_model = None
         self.recog_session = None
         self.antispoof_model = None
         self.device = None
-        self.mp_face_detection = None
-        self.face_cascade = None
-        self.detector_type = "mediapipe"
         
-        # Flags (mock mode is completely disabled)
-        self.use_mock_recog = False
-        self.use_mock_liveness = False
-        self.use_mock_detection = False
+        # PyTorch requires an explicit lock for concurrent execution, ONNX does not
+        self._liveness_lock = threading.Lock()
         
         self.load_detection()
         self.load_recognition()
         self.load_liveness()
 
     def load_detection(self):
+        path = self.det_path
+        if not os.path.exists(path):
+            project_root_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", self.det_path)
+            if os.path.exists(project_root_path):
+                path = project_root_path
+            else:
+                raise FileNotFoundError(f"CRITICAL: SCRFD Face Detection model weight file not found at '{self.det_path}'")
         try:
-            import mediapipe as mp
-            self.mp_face_detection = mp.solutions.face_detection
-            self.use_mock_detection = False
-            self.detector_type = "mediapipe"
-            logger.info("MediaPipe Face Detection loaded successfully.")
+            self.det_model = SCRFDetector(model_file=path, det_thresh=settings.DETECTION_THRESHOLD)
+            logger.info(f"SCRFD Face Detector loaded successfully from {path}.")
         except Exception as e:
-            raise RuntimeError(f"CRITICAL: Failed to load MediaPipe Face Detection: {e}")
+            raise RuntimeError(f"CRITICAL: Failed to load SCRFD Face Detector: {e}")
 
     def load_recognition(self):
         path = self.recog_path
@@ -53,10 +70,9 @@ class FacePipeline:
                 path = project_root_path
             else:
                 raise FileNotFoundError(f"CRITICAL: ONNX Recognition model weight file not found at '{self.recog_path}'")
-
         try:
             import onnxruntime as ort
-            self.recog_session = ort.InferenceSession(path)
+            self.recog_session = ort.InferenceSession(path, providers=['CPUExecutionProvider'])
             logger.info(f"ONNX Recognition Model loaded successfully from {path}.")
         except Exception as e:
             raise RuntimeError(f"CRITICAL: Failed to load ONNX Recognition Model: {e}")
@@ -69,15 +85,9 @@ class FacePipeline:
                 path = project_root_path
             else:
                 raise FileNotFoundError(f"CRITICAL: PyTorch Anti-spoof Model weight file not found at '{self.as_path}'")
-
         try:
             import torch
-            
-            src_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "SilentFace", "src")
-            if src_dir not in sys.path:
-                sys.path.append(src_dir)
-                
-            from model_lib.MiniFASNet import MiniFASNetV2
+            from app.core.liveness.MiniFASNet import MiniFASNetV2
             
             self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
             model = MiniFASNetV2(conv6_kernel=(5, 5)).to(self.device)
@@ -102,89 +112,151 @@ class FacePipeline:
         new_ymax = min(img_h, int(center_y + new_h / 2))
         return new_xmin, new_ymin, new_xmax, new_ymax
 
-    def process_image(self, image_bytes: bytes):
-        """Processes raw bytes of query image. Returns aligned face crop, embedding, liveness score, quality score, and a list of feedback messages."""
+    def process_image(self, image_bytes: bytes, is_enrollment: bool = False):
+        """
+        Processes raw bytes of query image.
+        Returns aligned face crop, embedding, liveness score, quality score, and a list of feedback messages.
+        """
         nparr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if image is None:
             raise ValueError("Failed to decode image bytes.")
             
         h, w, _ = image.shape
-        aligned_face = None
-        spoof_crop = None
         feedback = []
         
-        if self.mp_face_detection is None:
-            raise RuntimeError("MediaPipe face detector is not loaded.")
+        # 1. Run SCRFD Detection
+        bboxes, kpss = self.det_model.detect(image)
+        if bboxes.shape[0] == 0:
+            raise ValueError("No face detected in the image.")
+            
+        # Filter detections by detection threshold
+        valid_indices = [i for i in range(bboxes.shape[0]) if bboxes[i, 4] >= settings.DETECTION_THRESHOLD]
+        if not valid_indices:
+            raise ValueError("No face detected with high confidence.")
+            
+        # Select largest face
+        best_idx = max(valid_indices, key=lambda i: (bboxes[i, 2] - bboxes[i, 0]) * (bboxes[i, 3] - bboxes[i, 1]))
+        bbox = bboxes[best_idx]
+        landmarks_2d = kpss[best_idx]
         
-        with self.mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.5) as face_detection:
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            results = face_detection.process(image_rgb)
+        x1, y1, x2, y2, det_score = bbox
+        box_w = x2 - x1
+        box_h = y2 - y1
+        
+        # 2. Frame boundary positioning checks
+        if box_w < w * 0.08:
+            feedback.append("Please step closer to the camera.")
+        elif box_w > w * 0.8:
+            feedback.append("Please step back slightly.")
             
-            if not results.detections:
-                raise ValueError("No face detected in the image.")
-                
-            detection = results.detections[0]
-            bbox = detection.location_data.relative_bounding_box
-            xmin, ymin = int(bbox.xmin * w), int(bbox.ymin * h)
-            box_w, box_h = int(bbox.width * w), int(bbox.height * h)
+        if box_w < 80 or box_h < 80:
+            feedback.append("Please move closer to the camera (face size too small).")
             
-            if box_w < w * 0.15:
-                feedback.append("Please step closer to the camera.")
-            elif box_w > w * 0.8:
-                feedback.append("Please step back slightly.")
+        # 3. Expansion crop for liveness model
+        exp_xmin, exp_ymin, exp_xmax, exp_ymax = self.get_expanded_bbox(x1, y1, box_w, box_h, w, h, scale=settings.BBOX_EXPANSION)
+        spoof_crop = image[exp_ymin:exp_ymax, exp_xmin:exp_xmax]
+        
+        # 4. Face alignment
+        tform, _ = cv2.estimateAffinePartial2D(landmarks_2d.astype(np.float32), DST_PTS)
+        if tform is None:
+            raise ValueError("Face alignment failed.")
+        aligned_face = cv2.warpAffine(image, tform, (112, 112))
+        
+        # 5. Pose Estimation via SolvePnP
+        landmarks_2d_double = landmarks_2d.astype(np.float64)
+        focal_length = w
+        camera_matrix = np.array([
+            [focal_length, 0, w / 2],
+            [0, focal_length, h / 2],
+            [0, 0, 1]
+        ], dtype=np.float64)
+        
+        _, rvec, tvec = cv2.solvePnP(FACE_3D_MODEL, landmarks_2d_double, camera_matrix, None, flags=cv2.SOLVEPNP_ITERATIVE)
+        rmat, _ = cv2.Rodrigues(rvec)
+        
+        # Extract Euler angles (yaw, pitch, roll)
+        sy = np.sqrt(rmat[0, 0] * rmat[0, 0] + rmat[1, 0] * rmat[1, 0])
+        singular = sy < 1e-6
+        if not singular:
+            x_rot = np.arctan2(rmat[2, 1], rmat[2, 2])
+            y_rot = np.arctan2(-rmat[2, 0], sy)
+            z_rot = np.arctan2(rmat[1, 0], rmat[0, 0])
+        else:
+            x_rot = np.arctan2(-rmat[1, 2], rmat[1, 1])
+            y_rot = np.arctan2(-rmat[2, 0], sy)
+            z_rot = 0
             
-            exp_xmin, exp_ymin, exp_xmax, exp_ymax = self.get_expanded_bbox(xmin, ymin, box_w, box_h, w, h, scale=2.7)
-            spoof_crop = image[exp_ymin:exp_ymax, exp_xmin:exp_xmax]
+        pitch = np.degrees(x_rot)
+        yaw = np.degrees(y_rot)
+        roll = np.degrees(z_rot)
+        
+        # 6. Apply dynamic quality gates & threshold configurations
+        max_yaw = 20.0 if is_enrollment else 35.0
+        max_pitch = 15.0 if is_enrollment else 30.0
+        max_roll = 15.0 if is_enrollment else 25.0
+        min_quality = 0.50 if is_enrollment else 0.35
+        
+        # Check poses
+        if abs(yaw) > max_yaw:
+            feedback.append(f"Turn to face camera directly (yaw: {abs(yaw):.1f}° exceeds {max_yaw}°).")
+        if abs(pitch) > max_pitch:
+            feedback.append(f"Look directly at the camera (pitch: {abs(pitch):.1f}° exceeds {max_pitch}°).")
+        if abs(roll) > max_roll:
+            feedback.append(f"Please keep your head level (roll: {abs(roll):.1f}° exceeds {max_roll}°).")
             
-            keypoints = detection.location_data.relative_keypoints
-            src_pts = np.array([
-                (keypoints[0].x * w, keypoints[0].y * h),
-                (keypoints[1].x * w, keypoints[1].y * h),
-                (keypoints[2].x * w, keypoints[2].y * h)
-            ], dtype=np.float32)
-            
-            right_eye_x = keypoints[0].x * w
-            left_eye_x = keypoints[1].x * w
-            nose_x = keypoints[2].x * w
-            
-            d_right = abs(nose_x - right_eye_x)
-            d_left = abs(nose_x - left_eye_x)
-            if d_left > 0 and d_right > 0:
-                asymmetry = abs(d_right - d_left) / (d_right + d_left)
-                if asymmetry > 0.30:
-                    feedback.append("Turn to face camera directly.")
-            
-            tform, _ = cv2.estimateAffinePartial2D(src_pts, DST_PTS)
-            if tform is None:
-                raise ValueError("Face alignment failed.")
-            aligned_face = cv2.warpAffine(image, tform, (112, 112))
-                
+        # Quality score calculations
         gray = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2GRAY)
-        blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-        quality_score = min(1.0, blur_score / 200.0)
         
-        if quality_score < 0.35:
-            feedback.append("Image too blurry.")
+        # Blur check (Laplacian variance normalized to 112x112 baseline)
+        blur_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        quality_score = min(1.0, blur_var / 100.0)  # Normalized base threshold
+        
+        if quality_score < min_quality:
+            feedback.append(f"Image too blurry (quality: {quality_score:.2f} below {min_quality:.2f}).")
             
+        # Contrast check (Michelson contrast)
+        gray_min = float(np.min(gray))
+        gray_max = float(np.max(gray))
+        contrast = (gray_max - gray_min) / (gray_max + gray_min + 1e-5)
+        if contrast < 0.15:
+            feedback.append(f"Image contrast is too low ({contrast:.2f} below 0.15).")
+            
+        # Illumination brightness check (Histogram spread std)
         mean_brightness = np.mean(gray)
-        if mean_brightness < 50:
+        std_brightness = np.std(gray)
+        if mean_brightness < 50 or std_brightness < 25:
             feedback.append("Lighting too dark. Step into a well-lit area.")
         elif mean_brightness > 220:
             feedback.append("Lighting too bright. Avoid strong backlighting.")
-
+            
+        # Resolution check
+        res_ratio = box_w / 112.0
+        if res_ratio < 0.75:
+            feedback.append("Image resolution is too low for reliable matching.")
+            
+        # 7. Run Face Recognition model
         if self.recog_session is None:
             raise RuntimeError("CRITICAL: ONNX Recognition session is not loaded.")
             
-        face_image = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2RGB)
-        face_image = (face_image / 255.0 - 0.5) / 0.5
-        face_image = np.transpose(face_image, (2, 0, 1))
-        face_image = np.expand_dims(face_image, axis=0).astype(np.float32)
+        face_img_rgb = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2RGB)
+        face_img_norm = (face_img_rgb / 255.0 - 0.5) / 0.5
+        face_img_trans = np.transpose(face_img_norm, (2, 0, 1))
+        face_img_batch = np.expand_dims(face_img_trans, axis=0).astype(np.float32)
         
-        input_name = self.recog_session.get_inputs()[0].name
-        embedding = self.recog_session.run(None, {input_name: face_image})[0].flatten()
-        embedding = embedding / np.linalg.norm(embedding)
+        recog_input_name = self.recog_session.get_inputs()[0].name
+        # ONNX inference does not use a lock as it is thread-safe
+        embedding = self.recog_session.run(None, {recog_input_name: face_img_batch})[0].flatten()
+        
+        # 8. Embedding Quality Norm Gate (Calibrated)
+        raw_norm = float(np.linalg.norm(embedding))
+        if raw_norm < settings.EMBEDDING_QUALITY_THRESHOLD:
+            feedback.append(f"Face embedding quality too low for reliable matching (norm: {raw_norm:.2f} below {settings.EMBEDDING_QUALITY_THRESHOLD:.2f}).")
+            
+        # Normalize the final embedding vector
+        embedding = embedding / (raw_norm + 1e-5)
 
+        # 9. Run Liveness/Anti-Spoof model
         if self.antispoof_model is None:
             raise RuntimeError("CRITICAL: PyTorch Anti-spoof model is not loaded.")
         if spoof_crop is None or spoof_crop.size == 0:
@@ -193,22 +265,25 @@ class FacePipeline:
         import torch
         import torch.nn.functional as F
         
-        face_image = cv2.resize(spoof_crop, (80, 80))
-        image_data = face_image.astype(np.float32)
-        image_data = np.transpose(image_data, (2, 0, 1))
-        image_data = np.expand_dims(image_data, axis=0)
+        liveness_input = cv2.resize(spoof_crop, (80, 80))
+        liveness_data = liveness_input.astype(np.float32)
+        liveness_trans = np.transpose(liveness_data, (2, 0, 1))
+        liveness_batch = np.expand_dims(liveness_trans, axis=0)
         
-        input_tensor = torch.FloatTensor(image_data).to(self.device)
-        with torch.no_grad():
-            output = self.antispoof_model(input_tensor)
-            probs = F.softmax(output, dim=1).cpu().numpy()[0]
+        liveness_tensor = torch.FloatTensor(liveness_batch).to(self.device)
+        
+        # PyTorch requires an explicit lock around forward calls to prevent thread overlap
+        with self._liveness_lock:
+            with torch.no_grad():
+                output = self.antispoof_model(liveness_tensor)
+                probs = F.softmax(output, dim=1).cpu().numpy()[0]
         liveness_score = float(probs[1])
 
         return aligned_face, embedding, liveness_score, quality_score, feedback
 
-# Singleton instance of FacePipeline
-from app.config import settings
+# Instantiate a single FacePipeline instance
 face_pipeline = FacePipeline(
+    detection_model_path=settings.DETECTION_MODEL_PATH,
     recognition_model_path=settings.RECOGNITION_MODEL_PATH,
     antispoof_model_path=settings.ANTISPOOF_MODEL_PATH
 )

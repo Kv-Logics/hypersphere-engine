@@ -39,6 +39,18 @@ faculty = sqlalchemy.Table(
     *faculty_columns
 )
 
+# Dedicated table for multiple face embeddings per faculty member
+face_embeddings = sqlalchemy.Table(
+    "face_embeddings",
+    metadata,
+    sqlalchemy.Column("id", sqlalchemy.Integer(), primary_key=True, autoincrement=True),
+    sqlalchemy.Column("faculty_id", sqlalchemy.String(50), sqlalchemy.ForeignKey("faculty.id", ondelete="CASCADE"), nullable=False),
+    sqlalchemy.Column("embedding", Vector(512) if is_postgres else sqlalchemy.LargeBinary(), nullable=False),
+    sqlalchemy.Column("model_version", sqlalchemy.String(50), default="arcface_w600k_r50_v1", nullable=False),
+    sqlalchemy.Column("drift_review_pending", sqlalchemy.Boolean(), default=False, nullable=False),
+    sqlalchemy.Column("created_at", sqlalchemy.DateTime(), server_default=sqlalchemy.func.now())
+)
+
 # New table for Face registration/update/issue request flow
 face_requests = sqlalchemy.Table(
     "face_requests",
@@ -92,4 +104,20 @@ async def init_db():
         await conn.execute(sqlalchemy.text(
             "CREATE INDEX IF NOT EXISTS faculty_embedding_cos_hnsw_idx ON faculty USING hnsw (embedding vector_cosine_ops);"
         ))
+        
+        # Create HNSW index for the face_embeddings table
+        await conn.execute(sqlalchemy.text(
+            "CREATE INDEX IF NOT EXISTS face_embeddings_embedding_cos_hnsw_idx ON face_embeddings USING hnsw (embedding vector_cosine_ops);"
+        ))
+        
+        # Migrate existing embeddings from faculty to face_embeddings table
+        migrate_query = """
+            INSERT INTO face_embeddings (faculty_id, embedding, model_version, created_at)
+            SELECT id, embedding, 'arcface_w600k_r50_v1', NOW()
+            FROM faculty
+            WHERE embedding IS NOT NULL
+            AND id NOT IN (SELECT DISTINCT faculty_id FROM face_embeddings);
+        """
+        await conn.execute(sqlalchemy.text(migrate_query))
+        
     await async_engine.dispose()

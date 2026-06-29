@@ -12,7 +12,8 @@ from app.models.schemas import (
     FacultyResponse,
     VerifyResponse,
     CandidateMatch,
-    HealthResponse
+    HealthResponse,
+    DriftRequestResponse
 )
 
 router = APIRouter()
@@ -64,7 +65,7 @@ async def register_faculty(
     # 2. Read file and process face pipeline
     try:
         contents = await file.read()
-        _, embedding, liveness, quality, feedback = face_pipeline.process_image(contents)
+        _, embedding, liveness, quality, feedback = face_pipeline.process_image(contents, is_enrollment=True)
     except Exception as e:
         logger.error(f"Face processing failed during registration: {e}")
         raise HTTPException(
@@ -72,15 +73,24 @@ async def register_faculty(
             detail=f"Face registration failed: {str(e)}"
         )
 
-    # We enforce a basic quality threshold for enrollment images
-    if quality < 0.35:
-        feedback_msg = " ".join(feedback) if feedback else "Please capture a clearer face photo."
+    if feedback:
+        feedback_msg = " ".join(feedback)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Registration image quality too low ({quality:.2f}). {feedback_msg}"
+            detail=f"Registration quality gate failed: {feedback_msg}"
         )
 
-    # 3. Save/Update to database
+    # 3. Duplicate face search before enrollment (Fix 5)
+    dup_results = await vector_index.search(embedding, top_k=1)
+    if dup_results:
+        dup_faculty_id, dup_similarity = dup_results[0]
+        if dup_faculty_id != faculty_id and dup_similarity >= settings.DUPLICATE_SEARCH_THRESHOLD:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Duplicate face detected. This face already matches registered user '{dup_faculty_id}' (similarity: {dup_similarity:.2f})."
+            )
+
+    # 4. Save/Update to database
     if existing_faculty:
         # Update existing pre-seeded user record
         db_query = faculty.update().where(faculty.c.id == faculty_id).values(
@@ -99,7 +109,7 @@ async def register_faculty(
         )
     await database.execute(db_query)
 
-    # 4. Add to Vector Index
+    # 5. Add to Vector Index
     try:
         await vector_index.add_vector(faculty_id, embedding)
     except Exception as e:
@@ -117,7 +127,7 @@ async def register_faculty(
             detail="Internal error: failed to update biometric database index."
         )
 
-    # 5. Fetch and return new record
+    # 6. Fetch and return new record
     new_query = faculty.select().where(faculty.c.id == faculty_id)
     new_rec = await database.fetch_one(new_query)
     return new_rec
@@ -141,7 +151,7 @@ async def register_admin(
     # Process image
     try:
         contents = await file.read()
-        _, embedding, liveness, quality, feedback = face_pipeline.process_image(contents)
+        _, embedding, liveness, quality, feedback = face_pipeline.process_image(contents, is_enrollment=True)
     except Exception as e:
         logger.error(f"Face processing failed during admin upload: {e}")
         raise HTTPException(
@@ -149,12 +159,22 @@ async def register_admin(
             detail=f"Face extraction failed: {str(e)}"
         )
 
-    if quality < 0.35:
-        feedback_msg = " ".join(feedback) if feedback else "Image quality too low."
+    if feedback:
+        feedback_msg = " ".join(feedback)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Upload failed: Image quality too low ({quality:.2f}). {feedback_msg}"
+            detail=f"Registration quality gate failed: {feedback_msg}"
         )
+
+    # Duplicate face search before enrollment (Fix 5)
+    dup_results = await vector_index.search(embedding, top_k=1)
+    if dup_results:
+        dup_faculty_id, dup_similarity = dup_results[0]
+        if dup_faculty_id != user_id and dup_similarity >= settings.DUPLICATE_SEARCH_THRESHOLD:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Duplicate face detected. This face already matches registered user '{dup_faculty_id}' (similarity: {dup_similarity:.2f})."
+            )
 
     # Update database
     db_query = faculty.update().where(faculty.c.id == user_id).values(
@@ -192,7 +212,7 @@ async def verify_face(
     # 1. Process query image
     try:
         contents = await file.read()
-        _, embedding, liveness_score, quality_score, feedback = face_pipeline.process_image(contents)
+        _, embedding, liveness_score, quality_score, feedback = face_pipeline.process_image(contents, is_enrollment=False)
     except Exception as e:
         logger.warning(f"Verification pipeline failed: {e}")
         # Log rejected attempt with no matched faculty
@@ -214,11 +234,17 @@ async def verify_face(
     # 2. Check liveness (Anti-Spoofing)
     is_live = liveness_score >= settings.ANTISPOOF_THRESHOLD
     
+    # Borderline liveness check (liveness within 0.15 of threshold)
+    is_borderline_liveness = False
+    if is_live and (liveness_score < settings.ANTISPOOF_THRESHOLD + 0.15):
+        is_borderline_liveness = True
+    
     # 3. Vector Database Search
-    results = await vector_index.search(embedding, top_k=1)
+    results = await vector_index.search(embedding, top_k=3)
     
     candidate = None
     match_found = False
+    is_ambiguous = False
     similarity_score = 0.0
     matched_faculty_id = None
     
@@ -226,6 +252,15 @@ async def verify_face(
         matched_faculty_id, similarity_score = results[0]
         # Check matching threshold
         if similarity_score >= settings.MATCH_THRESHOLD:
+            # Check ambiguity margin if there is a second match
+            if len(results) > 1:
+                second_faculty_id, second_similarity = results[1]
+                if second_faculty_id != matched_faculty_id:
+                    gap = similarity_score - second_similarity
+                    if gap < settings.AMBIGUITY_MARGIN:
+                        is_ambiguous = True
+                        logger.warning(f"Ambiguity detected: {matched_faculty_id} ({similarity_score:.3f}) and {second_faculty_id} ({second_similarity:.3f}) gap is {gap:.3f}")
+            
             # Fetch faculty details
             f_query = faculty.select().where(faculty.c.id == matched_faculty_id)
             fac_member = await database.fetch_one(f_query)
@@ -241,7 +276,29 @@ async def verify_face(
     if not is_live:
         decision_status = "REJECTED" # Liveness check failed (SPOOF)
     elif match_found:
-        decision_status = "CONFIRMED" # Passed both liveness and match thresholds
+        if is_ambiguous or is_borderline_liveness:
+            decision_status = "MANUAL_REVIEW" # Ambiguous match or borderline liveness
+        else:
+            decision_status = "CONFIRMED" # Passed both liveness and match thresholds
+            
+            # Drift check: If similarity score is between MATCH_THRESHOLD and 0.62,
+            # capture the embedding as a drift review candidate!
+            if similarity_score < 0.62:
+                # Check if there is already a pending drift request for this user
+                pending_check = await database.fetch_one(
+                    query="SELECT COUNT(*) AS count FROM face_embeddings WHERE faculty_id = :fid AND drift_review_pending = true",
+                    values={"fid": matched_faculty_id}
+                )
+                if not pending_check or pending_check["count"] == 0:
+                    try:
+                        await vector_index.add_vector(
+                            faculty_id=matched_faculty_id,
+                            embedding=embedding,
+                            drift_review_pending=True
+                        )
+                        logger.info(f"Drift candidate detected for {matched_faculty_id} (similarity: {similarity_score:.3f}). Submitted for admin review.")
+                    except Exception as e:
+                        logger.error(f"Failed to submit drift candidate: {e}")
     else:
         decision_status = "REJECTED" # Passed liveness but did not match any registered user
 
@@ -267,6 +324,52 @@ async def verify_face(
         device_id=device_id,
         feedback=feedback
     )
+
+# Administrative Drift Review Endpoints (Fix 14)
+@router.get("/admin/drift-requests", response_model=List[DriftRequestResponse])
+async def list_drift_requests():
+    # Join face_embeddings with faculty table to get names
+    raw_query = """
+        SELECT fe.id, fe.faculty_id, f.name, fe.model_version, fe.created_at
+        FROM face_embeddings fe
+        JOIN faculty f ON fe.faculty_id = f.id
+        WHERE fe.drift_review_pending = true
+        ORDER BY fe.created_at DESC
+    """
+    results = await database.fetch_all(query=raw_query)
+    return results
+
+@router.post("/admin/drift-requests/{embedding_id}/approve")
+async def approve_drift_request(embedding_id: int):
+    check_query = "SELECT id, faculty_id FROM face_embeddings WHERE id = :eid"
+    res = await database.fetch_one(query=check_query, values={"eid": embedding_id})
+    if not res:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Drift embedding with ID {embedding_id} not found."
+        )
+    upd_query = """
+        UPDATE face_embeddings
+        SET drift_review_pending = false
+        WHERE id = :eid
+    """
+    await database.execute(query=upd_query, values={"eid": embedding_id})
+    logger.info(f"Drift embedding {embedding_id} for user {res['faculty_id']} approved.")
+    return {"status": "success", "message": "Drift embedding approved successfully."}
+
+@router.post("/admin/drift-requests/{embedding_id}/reject")
+async def reject_drift_request(embedding_id: int):
+    check_query = "SELECT id, faculty_id FROM face_embeddings WHERE id = :eid"
+    res = await database.fetch_one(query=check_query, values={"eid": embedding_id})
+    if not res:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Drift embedding with ID {embedding_id} not found."
+        )
+    del_query = "DELETE FROM face_embeddings WHERE id = :eid"
+    await database.execute(query=del_query, values={"eid": embedding_id})
+    logger.info(f"Drift embedding {embedding_id} for user {res['faculty_id']} rejected and deleted.")
+    return {"status": "success", "message": "Drift embedding rejected and deleted successfully."}
 
 @router.get("/faculty", response_model=List[FacultyResponse])
 async def list_faculty():

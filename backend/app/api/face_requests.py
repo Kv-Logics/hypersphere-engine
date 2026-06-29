@@ -114,7 +114,7 @@ async def approve_face_request(req_id: int, admin_notes: Optional[str] = Form(No
         
     # 2. Process image using Face Pipeline to extract embedding
     try:
-        _, embedding, liveness, quality, feedback = face_pipeline.process_image(req["uploaded_image"])
+        _, embedding, liveness, quality, feedback = face_pipeline.process_image(req["uploaded_image"], is_enrollment=True)
     except Exception as e:
         logger.error(f"Face processing failed during approval: {e}")
         raise HTTPException(
@@ -122,15 +122,24 @@ async def approve_face_request(req_id: int, admin_notes: Optional[str] = Form(No
             detail=f"Face extraction failed: {str(e)}"
         )
         
-    # Enforce basic quality checks during approval
-    if quality < 0.35:
-        feedback_msg = " ".join(feedback) if feedback else "Captured image quality is too low."
+    if feedback:
+        feedback_msg = " ".join(feedback)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Approval failed: Image quality too low ({quality:.2f}). {feedback_msg}"
+            detail=f"Approval failed: Registration quality gate failed: {feedback_msg}"
         )
         
-    # 3. Add to FAISS Vector Index
+    # Duplicate face search before enrollment (Fix 5)
+    dup_results = await vector_index.search(embedding, top_k=1)
+    if dup_results:
+        dup_faculty_id, dup_similarity = dup_results[0]
+        if dup_faculty_id != user_id and dup_similarity >= settings.DUPLICATE_SEARCH_THRESHOLD:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Duplicate face detected. This face already matches registered user '{dup_faculty_id}' (similarity: {dup_similarity:.2f})."
+            )
+
+    # 3. Add to face_embeddings table
     try:
         await vector_index.add_vector(user_id, embedding)
     except Exception as e:
