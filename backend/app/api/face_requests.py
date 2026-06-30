@@ -114,7 +114,7 @@ async def approve_face_request(req_id: int, admin_notes: Optional[str] = Form(No
         
     # 2. Process image using Face Pipeline to extract embedding
     try:
-        _, embedding, liveness, quality, feedback = face_pipeline.process_image(req["uploaded_image"], is_enrollment=True)
+        _, embedding, liveness, quality, feedback, raw_norm, stage_metrics = face_pipeline.process_image(req["uploaded_image"], is_enrollment=True)
     except Exception as e:
         logger.error(f"Face processing failed during approval: {e}")
         raise HTTPException(
@@ -141,7 +141,7 @@ async def approve_face_request(req_id: int, admin_notes: Optional[str] = Form(No
 
     # 3. Add to face_embeddings table
     try:
-        await vector_index.add_vector(user_id, embedding)
+        await vector_index.add_vector(user_id, embedding, raw_norm=raw_norm)
     except Exception as e:
         logger.error(f"Failed to update vector index: {e}")
         raise HTTPException(

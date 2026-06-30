@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hypersphere Biometric Control</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/assets/css/style.css">
     <script>
         (async function() {
             try {
@@ -167,6 +167,17 @@
                         <div class="feedback-title">System Advice</div>
                         <div class="feedback-text" id="resFeedback">-</div>
                     </div>
+
+                    <!-- Pipeline Stepper -->
+                    <div class="pipeline-stepper" id="pipelineStepper" style="display:none;">
+                        <div class="pipeline-stepper-title">
+                            <span>Pipeline Execution Stepper</span>
+                            <span id="pipelineTotalTime">— ms</span>
+                        </div>
+                        <div id="stepperStagesContainer">
+                            <!-- Dynamically populated stages -->
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -186,6 +197,6 @@
     </div>
 
     <!-- Scripts -->
-    <script src="/main.js" defer></script>
+    <script src="/assets/js/main.js" defer></script>
 </body>
 </html>

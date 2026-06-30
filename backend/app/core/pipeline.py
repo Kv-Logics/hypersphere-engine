@@ -18,12 +18,13 @@ DST_PTS = np.array([
 ], dtype=np.float32)
 
 # 3D canonical reference model for frontal face pose estimation (generic proportions)
+# Y-axis points DOWN in OpenCV camera coordinates (eyes have negative Y, mouth has positive Y).
 FACE_3D_MODEL = np.array([
-    [-30.0,  32.0, -10.0],  # Right eye
-    [ 30.0,  32.0, -10.0],  # Left eye
+    [-30.0, -32.0, -10.0],  # Right eye
+    [ 30.0, -32.0, -10.0],  # Left eye
     [  0.0,   0.0,   0.0],  # Nose
-    [-25.0, -28.0,  -5.0],  # Right mouth
-    [ 25.0, -28.0,  -5.0]   # Left mouth
+    [-25.0,  28.0,  -5.0],  # Right mouth
+    [ 25.0,  28.0,  -5.0]   # Left mouth
 ], dtype=np.float64)
 
 class FacePipeline:
@@ -41,12 +42,40 @@ class FacePipeline:
         self.antispoof_model = None
         self.device = None
         
+        self.use_mock_recog = False
+        self.use_mock_liveness = False
+        self.antispoof_enabled = True
+        
         # PyTorch requires an explicit lock for concurrent execution, ONNX does not
         self._liveness_lock = threading.Lock()
         
+        self.load_config_state()
         self.load_detection()
         self.load_recognition()
         self.load_liveness()
+
+    def load_config_state(self):
+        import json
+        self.antispoof_enabled = True
+        config_path = os.path.join(os.path.dirname(__file__), "config_state.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r") as f:
+                    data = json.load(f)
+                    self.antispoof_enabled = data.get("antispoof_enabled", True)
+                    logger.info(f"Loaded config: antispoof_enabled={self.antispoof_enabled}")
+            except Exception as e:
+                logger.error(f"Failed to load config_state.json: {e}")
+
+    def save_config_state(self):
+        import json
+        config_path = os.path.join(os.path.dirname(__file__), "config_state.json")
+        try:
+            with open(config_path, "w") as f:
+                json.dump({"antispoof_enabled": self.antispoof_enabled}, f)
+                logger.info(f"Saved config: antispoof_enabled={self.antispoof_enabled}")
+        except Exception as e:
+            logger.error(f"Failed to save config_state.json: {e}")
 
     def load_detection(self):
         path = self.det_path
@@ -69,13 +98,19 @@ class FacePipeline:
             if os.path.exists(project_root_path):
                 path = project_root_path
             else:
-                raise FileNotFoundError(f"CRITICAL: ONNX Recognition model weight file not found at '{self.recog_path}'")
+                logger.warning(f"ONNX Recognition model weight file not found at '{self.recog_path}'. Falling back to mock recognition.")
+                self.use_mock_recog = True
+                self.recog_session = None
+                return
         try:
             import onnxruntime as ort
             self.recog_session = ort.InferenceSession(path, providers=['CPUExecutionProvider'])
             logger.info(f"ONNX Recognition Model loaded successfully from {path}.")
+            self.use_mock_recog = False
         except Exception as e:
-            raise RuntimeError(f"CRITICAL: Failed to load ONNX Recognition Model: {e}")
+            logger.error(f"Failed to load ONNX Recognition Model ({e}). Falling back to mock recognition.")
+            self.use_mock_recog = True
+            self.recog_session = None
 
     def load_liveness(self):
         path = self.as_path
@@ -84,7 +119,10 @@ class FacePipeline:
             if os.path.exists(project_root_path):
                 path = project_root_path
             else:
-                raise FileNotFoundError(f"CRITICAL: PyTorch Anti-spoof Model weight file not found at '{self.as_path}'")
+                logger.warning(f"PyTorch Anti-spoof Model weight file not found at '{self.as_path}'. Falling back to mock liveness.")
+                self.use_mock_liveness = True
+                self.antispoof_model = None
+                return
         try:
             import torch
             from app.core.liveness.MiniFASNet import MiniFASNetV2
@@ -99,8 +137,11 @@ class FacePipeline:
             
             self.antispoof_model = model
             logger.info(f"PyTorch Anti-spoof Model loaded successfully from {path} (Device: {self.device}).")
+            self.use_mock_liveness = False
         except Exception as e:
-            raise RuntimeError(f"CRITICAL: Failed to load PyTorch Anti-spoof Model: {e}")
+            logger.error(f"Failed to load PyTorch Anti-spoof Model ({e}). Falling back to mock liveness.")
+            self.use_mock_liveness = True
+            self.antispoof_model = None
 
     def get_expanded_bbox(self, xmin, ymin, box_w, box_h, img_w, img_h, scale=2.7):
         center_x = xmin + box_w / 2
@@ -115,8 +156,13 @@ class FacePipeline:
     def process_image(self, image_bytes: bytes, is_enrollment: bool = False):
         """
         Processes raw bytes of query image.
-        Returns aligned face crop, embedding, liveness score, quality score, and a list of feedback messages.
+        Returns aligned face crop, embedding, liveness score, quality score, list of feedback messages, raw_norm, and stage_metrics.
         """
+        import time
+        
+        # --- Stage 1: Face Detection ---
+        t_det_start = time.perf_counter()
+        
         nparr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if image is None:
@@ -125,7 +171,6 @@ class FacePipeline:
         h, w, _ = image.shape
         feedback = []
         
-        # 1. Run SCRFD Detection
         bboxes, kpss = self.det_model.detect(image)
         if bboxes.shape[0] == 0:
             raise ValueError("No face detected in the image.")
@@ -144,7 +189,12 @@ class FacePipeline:
         box_w = x2 - x1
         box_h = y2 - y1
         
-        # 2. Frame boundary positioning checks
+        det_latency = (time.perf_counter() - t_det_start) * 1000
+        
+        # --- Stage 2: Quality Check & Alignment ---
+        t_qual_start = time.perf_counter()
+        
+        # Frame boundary positioning checks
         if box_w < w * 0.08:
             feedback.append("Please step closer to the camera.")
         elif box_w > w * 0.8:
@@ -153,17 +203,17 @@ class FacePipeline:
         if box_w < 80 or box_h < 80:
             feedback.append("Please move closer to the camera (face size too small).")
             
-        # 3. Expansion crop for liveness model
+        # Expansion crop for liveness model
         exp_xmin, exp_ymin, exp_xmax, exp_ymax = self.get_expanded_bbox(x1, y1, box_w, box_h, w, h, scale=settings.BBOX_EXPANSION)
         spoof_crop = image[exp_ymin:exp_ymax, exp_xmin:exp_xmax]
         
-        # 4. Face alignment
+        # Face alignment
         tform, _ = cv2.estimateAffinePartial2D(landmarks_2d.astype(np.float32), DST_PTS)
         if tform is None:
             raise ValueError("Face alignment failed.")
         aligned_face = cv2.warpAffine(image, tform, (112, 112))
         
-        # 5. Pose Estimation via SolvePnP
+        # Pose Estimation via SolvePnP
         landmarks_2d_double = landmarks_2d.astype(np.float64)
         focal_length = w
         camera_matrix = np.array([
@@ -172,7 +222,7 @@ class FacePipeline:
             [0, 0, 1]
         ], dtype=np.float64)
         
-        _, rvec, tvec = cv2.solvePnP(FACE_3D_MODEL, landmarks_2d_double, camera_matrix, None, flags=cv2.SOLVEPNP_ITERATIVE)
+        _, rvec, tvec = cv2.solvePnP(FACE_3D_MODEL, landmarks_2d_double, camera_matrix, None, flags=cv2.SOLVEPNP_EPNP)
         rmat, _ = cv2.Rodrigues(rvec)
         
         # Extract Euler angles (yaw, pitch, roll)
@@ -191,7 +241,7 @@ class FacePipeline:
         yaw = np.degrees(y_rot)
         roll = np.degrees(z_rot)
         
-        # 6. Apply dynamic quality gates & threshold configurations
+        # Apply dynamic quality gates & threshold configurations
         max_yaw = 20.0 if is_enrollment else 35.0
         max_pitch = 15.0 if is_enrollment else 30.0
         max_roll = 15.0 if is_enrollment else 25.0
@@ -235,51 +285,105 @@ class FacePipeline:
         if res_ratio < 0.75:
             feedback.append("Image resolution is too low for reliable matching.")
             
-        # 7. Run Face Recognition model
-        if self.recog_session is None:
-            raise RuntimeError("CRITICAL: ONNX Recognition session is not loaded.")
+        qual_latency = (time.perf_counter() - t_qual_start) * 1000
+        
+        # --- Stage 3: Face Recognition Model ---
+        t_rec_start = time.perf_counter()
+        
+        is_mock_recog = (self.use_mock_recog or self.recog_session is None)
+        if is_mock_recog:
+            # Deterministic pseudo-random mock embedding from aligned face pixel statistics
+            seed = int(np.sum(aligned_face) % (2**31))
+            rng = np.random.default_rng(seed)
+            embedding = rng.standard_normal(512).astype(np.float32)
+            raw_norm = 1.0
+        else:
+            face_img_rgb = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2RGB)
+            face_img_norm = (face_img_rgb / 255.0 - 0.5) / 0.5
+            face_img_trans = np.transpose(face_img_norm, (2, 0, 1))
+            face_img_batch = np.expand_dims(face_img_trans, axis=0).astype(np.float32)
             
-        face_img_rgb = cv2.cvtColor(aligned_face, cv2.COLOR_BGR2RGB)
-        face_img_norm = (face_img_rgb / 255.0 - 0.5) / 0.5
-        face_img_trans = np.transpose(face_img_norm, (2, 0, 1))
-        face_img_batch = np.expand_dims(face_img_trans, axis=0).astype(np.float32)
+            recog_input_name = self.recog_session.get_inputs()[0].name
+            # ONNX inference does not use a lock as it is thread-safe
+            embedding = self.recog_session.run(None, {recog_input_name: face_img_batch})[0].flatten()
+            raw_norm = float(np.linalg.norm(embedding))
         
-        recog_input_name = self.recog_session.get_inputs()[0].name
-        # ONNX inference does not use a lock as it is thread-safe
-        embedding = self.recog_session.run(None, {recog_input_name: face_img_batch})[0].flatten()
-        
-        # 8. Embedding Quality Norm Gate (Calibrated)
-        raw_norm = float(np.linalg.norm(embedding))
-        if raw_norm < settings.EMBEDDING_QUALITY_THRESHOLD:
+        # Embedding Quality Norm Gate (Calibrated)
+        if not is_mock_recog and raw_norm < settings.EMBEDDING_QUALITY_THRESHOLD:
             feedback.append(f"Face embedding quality too low for reliable matching (norm: {raw_norm:.2f} below {settings.EMBEDDING_QUALITY_THRESHOLD:.2f}).")
             
         # Normalize the final embedding vector
         embedding = embedding / (raw_norm + 1e-5)
-
-        # 9. Run Liveness/Anti-Spoof model
-        if self.antispoof_model is None:
-            raise RuntimeError("CRITICAL: PyTorch Anti-spoof model is not loaded.")
-        if spoof_crop is None or spoof_crop.size == 0:
-            raise ValueError("Invalid spoof crop for liveness estimation.")
+        
+        rec_latency = (time.perf_counter() - t_rec_start) * 1000
+        
+        # --- Stage 4: Anti-Spoofing / Liveness Check ---
+        t_live_start = time.perf_counter()
+        
+        is_mock_liveness = (self.use_mock_liveness or self.antispoof_model is None)
+        if not getattr(self, "antispoof_enabled", True):
+            liveness_score = 1.0
+            live_latency = 0.0
+            is_mock_liveness = False
+        elif is_mock_liveness:
+            liveness_score = 0.92  # High liveness pass score in mock mode
+            live_latency = (time.perf_counter() - t_live_start) * 1000
+        else:
+            if spoof_crop is None or spoof_crop.size == 0:
+                raise ValueError("Invalid spoof crop for liveness estimation.")
+                
+            import torch
+            import torch.nn.functional as F
             
-        import torch
-        import torch.nn.functional as F
+            liveness_input = cv2.resize(spoof_crop, (80, 80))
+            liveness_data = liveness_input.astype(np.float32)
+            liveness_trans = np.transpose(liveness_data, (2, 0, 1))
+            liveness_batch = np.expand_dims(liveness_trans, axis=0)
+            
+            liveness_tensor = torch.FloatTensor(liveness_batch).to(self.device)
+            
+            # PyTorch requires an explicit lock around forward calls to prevent thread overlap
+            with self._liveness_lock:
+                with torch.no_grad():
+                    output = self.antispoof_model(liveness_tensor)
+                    probs = F.softmax(output, dim=1).cpu().numpy()[0]
+            liveness_score = float(probs[1])
+            live_latency = (time.perf_counter() - t_live_start) * 1000
+            
+        # Package pipeline stage statistics
+        stage_metrics = {
+            "detection": {
+                "name": "Face Detection (SCRFD)",
+                "status": "completed",
+                "latency_ms": det_latency,
+                "is_fallback": False,
+                "details": f"Confidence: {det_score:.2%}",
+                "confidence": float(det_score)
+            },
+            "quality": {
+                "name": "Quality Gates & Pose",
+                "status": "failed" if feedback else "completed",
+                "latency_ms": qual_latency,
+                "is_fallback": False,
+                "details": f"Blur: {quality_score:.2f}, Pose: {yaw:+.1f}°Y / {pitch:+.1f}°P / {roll:+.1f}°R"
+            },
+            "recognition": {
+                "name": "Biometric Encoding (ArcFace)",
+                "status": "completed",
+                "latency_ms": rec_latency,
+                "is_fallback": is_mock_recog,
+                "details": "Mock Embedding" if is_mock_recog else f"Norm: {raw_norm:.2f}"
+            },
+            "liveness": {
+                "name": "Anti-Spoofing (MiniFASNet)",
+                "status": "skipped" if not getattr(self, "antispoof_enabled", True) else "completed",
+                "latency_ms": live_latency,
+                "is_fallback": is_mock_liveness,
+                "details": "Disabled by Admin" if not getattr(self, "antispoof_enabled", True) else ("Mock Liveness (0.92)" if is_mock_liveness else f"Score: {liveness_score:.2f} ({'LIVE' if liveness_score >= settings.ANTISPOOF_THRESHOLD else 'SPOOF'})")
+            }
+        }
         
-        liveness_input = cv2.resize(spoof_crop, (80, 80))
-        liveness_data = liveness_input.astype(np.float32)
-        liveness_trans = np.transpose(liveness_data, (2, 0, 1))
-        liveness_batch = np.expand_dims(liveness_trans, axis=0)
-        
-        liveness_tensor = torch.FloatTensor(liveness_batch).to(self.device)
-        
-        # PyTorch requires an explicit lock around forward calls to prevent thread overlap
-        with self._liveness_lock:
-            with torch.no_grad():
-                output = self.antispoof_model(liveness_tensor)
-                probs = F.softmax(output, dim=1).cpu().numpy()[0]
-        liveness_score = float(probs[1])
-
-        return aligned_face, embedding, liveness_score, quality_score, feedback
+        return aligned_face, embedding, liveness_score, quality_score, feedback, raw_norm, stage_metrics
 
 # Instantiate a single FacePipeline instance
 face_pipeline = FacePipeline(

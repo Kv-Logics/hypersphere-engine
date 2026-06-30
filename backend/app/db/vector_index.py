@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -13,13 +14,17 @@ class VectorIndexManager:
             raise RuntimeError("CRITICAL: PostgreSQL + pgvector is required. Vector index fallback is disabled.")
         self.dimension = dimension
 
-    async def add_vector(self, faculty_id: str, embedding: np.ndarray, model_version="arcface_w600k_r50_v1", drift_review_pending=False):
+    async def add_vector(self, faculty_id: str, embedding: np.ndarray, model_version="arcface_w600k_r50_v1", drift_review_pending=False, raw_norm: Optional[float] = None):
         """Adds a normalized 512-D embedding to the face_embeddings table, keeping at most 15 records per user."""
-        norm = np.linalg.norm(embedding)
-        if norm > 0:
-            embedding = embedding / norm
-        else:
-            raise ValueError("Cannot index a zero vector.")
+        calc_norm = np.linalg.norm(embedding)
+        norm_to_save = raw_norm if raw_norm is not None else calc_norm
+        
+        # If the input vector has not been pre-normalized, normalize it
+        if abs(calc_norm - 1.0) > 1e-4:
+            if calc_norm > 0:
+                embedding = embedding / calc_norm
+            else:
+                raise ValueError("Cannot index a zero vector.")
 
         from app.db.database import database, face_embeddings
         emb_list = embedding.tolist()
@@ -50,10 +55,10 @@ class VectorIndexManager:
             embedding=emb_list,
             model_version=model_version,
             drift_review_pending=drift_review_pending,
-            raw_norm=float(norm)
+            raw_norm=float(norm_to_save)
         )
         await database.execute(insert_query)
-        logger.info(f"Vector for faculty {faculty_id} saved to PostgreSQL face_embeddings (Pending review: {drift_review_pending}, Raw norm: {norm:.2f}).")
+        logger.info(f"Vector for faculty {faculty_id} saved to PostgreSQL face_embeddings (Pending review: {drift_review_pending}, Raw norm: {norm_to_save:.2f}).")
 
     async def search(self, query_embedding: np.ndarray, top_k=5):
         """Searches pgvector index in face_embeddings table for query_embedding. Returns list of (faculty_id, similarity_score)."""
@@ -73,10 +78,12 @@ class VectorIndexManager:
             ORDER BY fe.embedding <=> CAST(:query_val AS vector(512))
             LIMIT :limit
         """
-        results = await database.fetch_all(
-            query=raw_query, 
-            values={"query_val": str(emb_list), "limit": candidate_limit}
-        )
+        async with database.transaction():
+            await database.execute("SET hnsw.ef_search = 40;")
+            results = await database.fetch_all(
+                query=raw_query, 
+                values={"query_val": str(emb_list), "limit": candidate_limit}
+            )
         
         # Deduplicate candidates in Python by keeping the max similarity score for each user
         user_matches = {}

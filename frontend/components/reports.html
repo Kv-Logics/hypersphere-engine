@@ -1,0 +1,44 @@
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Total Faculty</h3>
+        <div id="statTotalUsers" class="value">-</div>
+    </div>
+    <div class="stat-card" style="border-color: rgba(46, 125, 50, 0.3);">
+        <h3>Present Today</h3>
+        <div id="statPresentToday" class="value" style="color:var(--success);">-</div>
+    </div>
+    <div class="stat-card" style="border-color: rgba(211, 47, 47, 0.3);">
+        <h3>Absent Today</h3>
+        <div id="statAbsentToday" class="value" style="color:var(--error);">-</div>
+    </div>
+</div>
+
+<div class="section-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+        <h2 style="border:none; padding:0; margin:0;">Daily Log</h2>
+        <input type="date" id="reportDate" onchange="loadDailyReport()"
+            style="border:1px solid var(--border-color); padding:0.5rem; border-radius:6px; font-size:0.85rem;">
+    </div>
+
+    <div style="overflow-x:auto;">
+        <table class="attendance-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Log Time</th>
+                    <th>Status</th>
+                    <th>Similarity</th>
+                    <th>Liveness</th>
+                </tr>
+            </thead>
+            <tbody id="reportTableBody">
+                <tr>
+                    <td colspan="6" style="text-align:center; padding:2rem; color:var(--text-secondary);">
+                        Select a date to generate report.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

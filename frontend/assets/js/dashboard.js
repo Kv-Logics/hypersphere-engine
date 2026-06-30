@@ -159,6 +159,7 @@ function openModal(id) {
     document.getElementById(id).style.display = "flex";
 }
 
+// Modal closing
 function closeModal(id) {
     document.getElementById(id).style.display = "none";
 }

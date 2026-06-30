@@ -55,6 +55,13 @@ class CandidateMatch(BaseModel):
     name: str
     similarity_score: float
 
+class PipelineStage(BaseModel):
+    name: str
+    status: str
+    latency_ms: float
+    is_fallback: bool
+    details: Optional[str] = None
+
 class VerifyResponse(BaseModel):
     status: str = Field(..., description="Decision status: CONFIRMED, REJECTED, or MANUAL_REVIEW")
     match_found: bool
@@ -64,6 +71,7 @@ class VerifyResponse(BaseModel):
     timestamp: datetime
     device_id: str
     feedback: List[str] = Field(default_factory=list)
+    pipeline_stages: Optional[List[PipelineStage]] = None
 
 
 class HealthResponse(BaseModel):
@@ -82,3 +90,17 @@ class DriftRequestResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SystemMetricsResponse(BaseModel):
+    cpu_usage_percent: float
+    gpu_usage_percent: float
+    memory_usage_percent: float
+    avg_similarity: float
+    avg_liveness: float
+    far: float
+    frr: float
+    fmr: float
+    fnmr: float
+    total_records: int
+

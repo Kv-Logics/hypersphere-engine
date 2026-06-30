@@ -1,0 +1,122 @@
+<style>
+.switch-label {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+}
+.switch-label input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.switch-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border-color);
+    transition: .3s;
+    border-radius: 20px;
+}
+.switch-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+}
+input:checked + .switch-slider {
+    background-color: var(--primary);
+}
+input:checked + .switch-slider:before {
+    transform: translateX(18px);
+}
+</style>
+
+<div style="display: flex; justify-content: flex-end; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <label class="switch-label">
+            <input type="checkbox" id="healthAutoRefresh" checked onchange="toggleHealthAutoRefresh()">
+            <span class="switch-slider"></span>
+        </label>
+        <span style="font-size: 0.85rem; font-weight: 500; color: var(--text-secondary);">Auto-Refresh (3s)</span>
+    </div>
+    <button onclick="loadSystemHealth()" class="btn btn-outlined" style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; padding: 0.4rem 0.85rem; background: var(--surface);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.8;">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+        </svg>
+        Refresh
+    </button>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>CPU Utilization</h3>
+        <div id="healthCpu" class="value">- %</div>
+    </div>
+    <div class="stat-card">
+        <h3>Memory Utilization</h3>
+        <div id="healthMemory" class="value">- %</div>
+    </div>
+    <div class="stat-card">
+        <h3>GPU Utilization</h3>
+        <div id="healthGpu" class="value">- %</div>
+    </div>
+</div>
+<div class="stats-grid">
+    <div class="stat-card" style="border-color: rgba(25, 118, 210, 0.3);">
+        <h3>False Match Rate (FMR)</h3>
+        <div id="healthFmr" class="value">0.00%</div>
+    </div>
+    <div class="stat-card" style="border-color: rgba(25, 118, 210, 0.3);">
+        <h3>False Non-Match Rate (FNMR)</h3>
+        <div id="healthFnmr" class="value">0.00%</div>
+    </div>
+    <div class="stat-card">
+        <h3>Avg. Face Match Similarity</h3>
+        <div id="healthAvgSim" class="value">-</div>
+    </div>
+</div>
+
+<div class="section-card">
+    <h2 style="border:none; padding-bottom:0.5rem; margin-bottom:1rem;">Biometric Model & Safety Status</h2>
+    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:1.5rem;">
+        Real-time operational state of deployed deep learning ONNX models.
+    </p>
+    <div class="pipeline-stepper" style="border-top:none; margin:0; padding:0; gap:1.25rem;">
+        <div class="stepper-stage" style="gap:1rem;">
+            <span id="healthDetIcon" class="stage-icon completed">✓</span>
+            <div class="stage-body">
+                <div class="stage-header">
+                    <span class="stage-name" style="font-weight:600;">Face Detection Model (SCRFD)</span>
+                    <span id="healthDetStatus" class="stage-fallback-badge actual">Actual</span>
+                </div>
+            </div>
+        </div>
+        <div class="stepper-stage" style="gap:1rem;">
+            <span id="healthRecIcon" class="stage-icon completed">✓</span>
+            <div class="stage-body">
+                <div class="stage-header">
+                    <span class="stage-name" style="font-weight:600;">Biometric Encoding Model (ArcFace)</span>
+                    <span id="healthRecStatus" class="stage-fallback-badge actual">Actual</span>
+                </div>
+            </div>
+        </div>
+        <div class="stepper-stage" style="gap:1rem;">
+            <span id="healthLiveIcon" class="stage-icon completed">✓</span>
+            <div class="stage-body">
+                <div class="stage-header">
+                    <span class="stage-name" style="font-weight:600;">Anti-Spoofing Model (MiniFASNetV2)</span>
+                    <span id="healthLiveStatus" class="stage-fallback-badge actual">Actual</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -27,6 +27,10 @@ if is_postgres:
     faculty_columns.append(sqlalchemy.Column("embedding", Vector(512), nullable=True))
 
 faculty_columns.extend([
+    sqlalchemy.Column("embedding_model", sqlalchemy.String(50), nullable=True),
+    sqlalchemy.Column("embedding_created", sqlalchemy.DateTime(), nullable=True),
+    sqlalchemy.Column("embedding_quality", sqlalchemy.Float(), nullable=True),
+    sqlalchemy.Column("embedding_count", sqlalchemy.Integer(), default=1),
     sqlalchemy.Column("created_at", sqlalchemy.DateTime(), server_default=sqlalchemy.func.now()),
     sqlalchemy.Column("updated_at", sqlalchemy.DateTime(), server_default=sqlalchemy.func.now(), onupdate=sqlalchemy.func.now()),
     sqlalchemy.Column("is_active", sqlalchemy.Boolean(), default=True),
@@ -79,6 +83,8 @@ attendance_records = sqlalchemy.Table(
     sqlalchemy.Column("quality_score", sqlalchemy.Float(), nullable=True),
     sqlalchemy.Column("device_id", sqlalchemy.String(100), nullable=False),
     sqlalchemy.Column("session_token", sqlalchemy.String(255), nullable=True),
+    sqlalchemy.Column("detector_confidence", sqlalchemy.Float(), nullable=True),
+    sqlalchemy.Column("model_version", sqlalchemy.String(50), default="arcface_w600k_r50_v1", nullable=True),
     sqlalchemy.Column("created_at", sqlalchemy.DateTime(), server_default=sqlalchemy.func.now()),
 )
 
@@ -103,15 +109,22 @@ async def init_db():
         await conn.execute(sqlalchemy.text("ALTER TABLE face_embeddings ADD COLUMN IF NOT EXISTS raw_norm FLOAT;"))
         await conn.execute(sqlalchemy.text("ALTER TABLE face_embeddings ADD COLUMN IF NOT EXISTS drift_review_pending BOOLEAN DEFAULT false;"))
         await conn.execute(sqlalchemy.text("ALTER TABLE face_embeddings ALTER COLUMN drift_review_pending SET DEFAULT false;"))
+        await conn.execute(sqlalchemy.text("ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS detector_confidence FLOAT;"))
+        await conn.execute(sqlalchemy.text("ALTER TABLE attendance_records ADD COLUMN IF NOT EXISTS model_version VARCHAR(50) DEFAULT 'arcface_w600k_r50_v1';"))
+
+        await conn.execute(sqlalchemy.text("ALTER TABLE faculty ADD COLUMN IF NOT EXISTS embedding_model VARCHAR(50);"))
+        await conn.execute(sqlalchemy.text("ALTER TABLE faculty ADD COLUMN IF NOT EXISTS embedding_created TIMESTAMP;"))
+        await conn.execute(sqlalchemy.text("ALTER TABLE faculty ADD COLUMN IF NOT EXISTS embedding_quality DOUBLE PRECISION;"))
+        await conn.execute(sqlalchemy.text("ALTER TABLE faculty ADD COLUMN IF NOT EXISTS embedding_count INTEGER DEFAULT 1;"))
 
         # Create HNSW index for cosine distance to ensure optimal nearest neighbor search performance
         await conn.execute(sqlalchemy.text(
-            "CREATE INDEX IF NOT EXISTS faculty_embedding_cos_hnsw_idx ON faculty USING hnsw (embedding vector_cosine_ops);"
+            "CREATE INDEX IF NOT EXISTS faculty_embedding_cos_hnsw_idx ON faculty USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);"
         ))
         
         # Create HNSW index for the face_embeddings table
         await conn.execute(sqlalchemy.text(
-            "CREATE INDEX IF NOT EXISTS face_embeddings_embedding_cos_hnsw_idx ON face_embeddings USING hnsw (embedding vector_cosine_ops);"
+            "CREATE INDEX IF NOT EXISTS face_embeddings_embedding_cos_hnsw_idx ON face_embeddings USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);"
         ))
         
         # Migrate existing embeddings from faculty to face_embeddings table

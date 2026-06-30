@@ -216,7 +216,6 @@ function stopWebcam() {
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
         stream = null;
-        video.srcObject = null;
     }
     video.style.display = "none";
     canvas.style.display = "none";
@@ -515,9 +514,15 @@ function displayVerificationResult(data, silent = false) {
             addLog(`REJECTED: Verification failed (Live: ${livenessPercent}%, Similarity: ${similarityPercent}%, Qual: ${qualityPercent}%)`, "error");
         }
     }
+    
+    // Render pipeline stepper
+    const stepperEl = document.getElementById("pipelineStepper");
+    const stagesContainerEl = document.getElementById("stepperStagesContainer");
+    const totalTimeEl = document.getElementById("pipelineTotalTime");
+    renderPipelineStepper(stepperEl, stagesContainerEl, totalTimeEl, data.pipeline_stages);
 }
 
-// Helper to determine threshold (default match threshold in backend is 0.60/60%)
+// Helper to determine threshold
 function settings_match_threshold_percent() {
     return 60; 
 }
@@ -568,4 +573,70 @@ async function runLiveDemoLoop() {
     if (isLiveDemoActive) {
         liveDemoTimeout = setTimeout(runLiveDemoLoop, 800);
     }
+}
+
+function renderPipelineStepper(stepperEl, stagesContainerEl, totalTimeEl, stages) {
+    if (!stepperEl || !stagesContainerEl || !stages || stages.length === 0) {
+        if (stepperEl) stepperEl.style.display = "none";
+        return;
+    }
+    
+    stepperEl.style.display = "block";
+    stagesContainerEl.innerHTML = "";
+    
+    let totalTime = 0;
+    stages.forEach(stage => {
+        totalTime += stage.latency_ms;
+    });
+    if (totalTimeEl) {
+        totalTimeEl.innerText = `${totalTime.toFixed(1)} ms`;
+    }
+    
+    let cumulativeTime = 0;
+    stages.forEach((stage, idx) => {
+        cumulativeTime += stage.latency_ms;
+        
+        const stageDiv = document.createElement("div");
+        stageDiv.className = "stepper-stage";
+        
+        let iconHtml = "";
+        if (stage.status === "completed") {
+            iconHtml = `<div class="stage-icon completed">✓</div>`;
+        } else if (stage.status === "failed") {
+            iconHtml = `<div class="stage-icon failed">✗</div>`;
+        } else if (stage.status === "skipped") {
+            iconHtml = `<div class="stage-icon" style="background-color: #eee; color: #999;">—</div>`;
+        } else {
+            iconHtml = `<div class="stage-icon pending">●</div>`;
+        }
+        
+        const fallbackClass = stage.is_fallback ? "mock" : "actual";
+        const fallbackText = stage.is_fallback ? "Mock" : "Actual";
+        
+        // Calculate transition time to the next stage if not the last stage
+        let transitionHtml = "";
+        if (idx < stages.length - 1) {
+            transitionHtml = ` <span style="opacity: 0.5; margin-left: 0.5rem; font-size: 0.7rem;">(Next: +${stages[idx+1].latency_ms.toFixed(1)}ms)</span>`;
+        }
+        
+        stageDiv.innerHTML = `
+            ${iconHtml}
+            <div class="stage-body">
+                <div class="stage-header">
+                    <div>
+                        <span class="stage-name">${stage.name}</span>
+                        <span class="stage-fallback-badge ${fallbackClass}">${fallbackText}</span>
+                    </div>
+                    <span class="stage-time">${stage.latency_ms.toFixed(1)} ms</span>
+                </div>
+                <div class="stage-details">
+                    ${stage.details || ""}
+                    <span style="display: block; opacity: 0.6; font-size: 0.65rem; margin-top: 2px;">
+                        Cumulative: ${cumulativeTime.toFixed(1)} ms${transitionHtml}
+                    </span>
+                </div>
+            </div>
+        `;
+        stagesContainerEl.appendChild(stageDiv);
+    });
 }
