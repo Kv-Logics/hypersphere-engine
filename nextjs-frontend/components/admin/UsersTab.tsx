@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Building2, Search, Plus, Trash2 } from "lucide-react";
+import { Building2, Search, Plus, Trash2, Upload } from "lucide-react";
 
 export default function UsersTab() {
   const [users, setUsers] = useState<any[]>([]);
@@ -9,6 +9,7 @@ export default function UsersTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [faceUploadUser, setFaceUploadUser] = useState<any>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -28,10 +29,26 @@ export default function UsersTab() {
     }
   };
 
+  const deleteFaculty = async (userId: string, userName: string) => {
+    if (!confirm(`Are you sure you want to permanently delete the profile for "${userName}" (@${userId})? This will also remove their biometric embedding.`)) return;
+    try {
+      const res = await fetch(`/api/v1/faculty/${userId}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchUsers();
+      } else {
+        const err = await res.json();
+        alert(`Delete failed: ${err.detail || "Server error"}`);
+      }
+    } catch (e) {
+      alert("Delete failed: connection error.");
+    }
+  };
+
   const filteredUsers = users.filter((u) => {
     const matchSearch = u.name?.toLowerCase().includes(search.toLowerCase()) || 
-                        u.email_prefix?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "" || u.face_registered_status === statusFilter;
+                        u.email_prefix?.toLowerCase().includes(search.toLowerCase()) ||
+                        u.id?.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter === "" || u.face_status === statusFilter;
     return matchSearch && matchStatus;
   });
 
@@ -99,7 +116,7 @@ export default function UsersTab() {
             ) : (
               filteredUsers.map((u) => {
                 let badgeColor = "var(--text-secondary)";
-                let badgeText = u.face_registered_status;
+                let badgeText = u.face_status || "none";
                 if (badgeText === "none") {
                   badgeColor = "var(--text-secondary)"; badgeText = "No Profile";
                 } else if (badgeText === "registered") {
@@ -113,8 +130,8 @@ export default function UsersTab() {
                 return (
                   <tr key={u.id}>
                     <td>
-                      <div className="faculty-id">{u.email_prefix}</div>
-                      <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>ID: {u.faculty_id}</div>
+                      <div className="faculty-id">{u.id}</div>
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{u.emp_id ? `EMP: ${u.emp_id}` : u.email || ''}</div>
                     </td>
                     <td className="faculty-name">{u.name}</td>
                     <td>{u.department || "General"}</td>
@@ -123,8 +140,11 @@ export default function UsersTab() {
                         {badgeText}
                       </span>
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      <button className="delete-profile-btn" title="Delete Profile">
+                    <td style={{ textAlign: "right", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                      <button onClick={() => setFaceUploadUser(u)} className="delete-profile-btn" title="Upload Face" style={{ color: "var(--primary)" }}>
+                        <Upload className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => deleteFaculty(u.id, u.name)} className="delete-profile-btn" title="Delete Profile">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
@@ -139,6 +159,10 @@ export default function UsersTab() {
       {/* Add User Modal */}
       {showModal && (
         <AddUserModal onClose={() => setShowModal(false)} onRefresh={fetchUsers} />
+      )}
+      {/* Admin Face Upload Modal */}
+      {faceUploadUser && (
+        <AdminFaceUploadModal user={faceUploadUser} onClose={() => setFaceUploadUser(null)} onRefresh={fetchUsers} />
       )}
     </div>
   );
@@ -214,6 +238,64 @@ function AddUserModal({ onClose, onRefresh }: { onClose: () => void, onRefresh: 
           <div className="action-bar" style={{ marginTop: "1.5rem" }}>
             <button type="button" onClick={onClose} className="btn btn-outlined">Cancel</button>
             <button type="submit" className="btn btn-contained">Create User</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AdminFaceUploadModal({ user, onClose, onRefresh }: { user: any; onClose: () => void; onRefresh: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("user_id", user.id);
+      formData.append("file", file);
+      const res = await fetch("/api/v1/register-admin", {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        alert(`Face registered successfully for ${user.name}.`);
+        onRefresh();
+        onClose();
+      } else {
+        const err = await res.json();
+        alert(`Upload failed: ${err.detail || "Server error"}`);
+      }
+    } catch (err) {
+      alert("Upload failed: connection error.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" style={{ display: "flex" }}>
+      <div className="modal-card">
+        <div className="modal-header">
+          <h3>Upload Face for {user.name}</h3>
+          <button type="button" className="close-modal" onClick={onClose} style={{ fontSize: "1.5rem" }}>×</button>
+        </div>
+        <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+          Upload a clear frontal photo of <strong>@{user.id}</strong> to register their biometric template.
+        </p>
+        <form onSubmit={handleUpload}>
+          <div className="input-field">
+            <label>Face Photo</label>
+            <input required type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          </div>
+          <div className="action-bar" style={{ marginTop: "1.5rem" }}>
+            <button type="button" onClick={onClose} className="btn btn-outlined">Cancel</button>
+            <button type="submit" disabled={uploading || !file} className="btn btn-contained">
+              {uploading ? "Processing..." : "Register Face"}
+            </button>
           </div>
         </form>
       </div>

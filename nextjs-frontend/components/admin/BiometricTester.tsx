@@ -23,7 +23,7 @@ export default function BiometricTester() {
   const toggleAntispoofSetting = async (checked: boolean) => {
     setAntispoof(checked);
     try {
-      await fetch(`/api/v1/config/antispoof?enabled=${checked}`, { method: "POST" });
+      await fetch('/api/v1/config/antispoof', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: checked }) });
     } catch (e) {
       console.error(e);
     }
@@ -209,11 +209,11 @@ export default function BiometricTester() {
               <div className="flex flex-col gap-3 text-sm">
                 <div className="flex justify-between border-b border-[var(--divider)] pb-2">
                   <span className="text-[var(--text-secondary)] font-medium">Matched User:</span>
-                  <span className="font-semibold text-[var(--text-primary)]">{result.matched_user_id ? `@${result.matched_user_id}` : 'None'}</span>
+                  <span className="font-semibold text-[var(--text-primary)]">{result.candidate?.faculty_id ? `@${result.candidate.faculty_id}` : 'None'}</span>
                 </div>
                 <div className="flex justify-between border-b border-[var(--divider)] pb-2">
                   <span className="text-[var(--text-secondary)] font-medium">Match Accuracy (Similarity):</span>
-                  <span className="font-semibold font-[var(--font-jetbrains)]">{result.similarity_score ? `${Math.round(result.similarity_score * 100)}%` : '-'}</span>
+                  <span className="font-semibold font-[var(--font-jetbrains)]">{result.candidate?.similarity_score ? `${Math.round(result.candidate.similarity_score * 100)}%` : '-'}</span>
                 </div>
                 <div className="flex justify-between border-b border-[var(--divider)] pb-2">
                   <span className="text-[var(--text-secondary)] font-medium">Liveness Score:</span>

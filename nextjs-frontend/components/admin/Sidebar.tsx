@@ -13,7 +13,7 @@ export default function Sidebar() {
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const reqRes = await fetch("/api/v1/admin/pending-requests");
+        const reqRes = await fetch("/api/v1/face-requests?status=pending");
         if (reqRes.ok) {
           const data = await reqRes.json();
           setPendingCount(data.length || 0);

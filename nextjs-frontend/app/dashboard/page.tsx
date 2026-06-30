@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Camera, ShieldAlert, CheckCircle2, ShieldQuestion, Clock } from "lucide-react";
+import { LogOut, User, Camera, ShieldAlert, CheckCircle2, ShieldQuestion, Clock, UserPlus } from "lucide-react";
 import { useWebcam } from "@/hooks/useWebcam";
 import { parseUTCDateTime } from "@/lib/utils";
 
@@ -26,15 +26,18 @@ export default function FacultyDashboard() {
   useEffect(() => {
     const userData = localStorage.getItem("user");
     if (userData) {
-      setUser(JSON.parse(userData));
-      loadLogs(JSON.parse(userData).id);
-      checkPendingRequests(JSON.parse(userData).id);
+      const parsed = JSON.parse(userData);
+      setUser(parsed);
+      loadLogs(parsed.id);
+      checkPendingRequests(parsed.id);
+    } else {
+      router.push("/");
     }
-  }, []);
+  }, [router]);
 
   const loadLogs = async (userId: string) => {
     try {
-      const res = await fetch(`/api/v1/attendance?faculty_id=${userId}`);
+      const res = await fetch(`/api/v1/attendance?user_id=${userId}`);
       if (res.ok) {
         setLogs(await res.json());
       }
@@ -47,7 +50,7 @@ export default function FacultyDashboard() {
 
   const checkPendingRequests = async (userId: string) => {
     try {
-      const res = await fetch("/api/v1/admin/pending-requests");
+      const res = await fetch("/api/v1/face-requests?status=pending");
       if (res.ok) {
         const requests = await res.json();
         const pending = requests.some((r: any) => r.user_id === userId);
@@ -56,7 +59,19 @@ export default function FacultyDashboard() {
     } catch (e) {}
   };
 
-  const handleLogout = () => {
+  const refreshUser = async () => {
+    try {
+      const res = await fetch("/api/v1/auth/me");
+      if (res.ok) {
+        const updatedUser = await res.json();
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      }
+    } catch (e) {}
+  };
+
+  const handleLogout = async () => {
+    try { await fetch("/api/v1/auth/logout", { method: "POST" }); } catch (e) {}
     localStorage.removeItem("user");
     router.push("/");
   };
@@ -66,18 +81,31 @@ export default function FacultyDashboard() {
     else startWebcam();
   };
 
+  const faceIsRegistered = user?.face_status === "registered" || user?.face_status === "approved";
+
+  // Multi-frame verification (5 frames with 200ms intervals, matching legacy behavior)
   const handleVerify = async () => {
-    const blob = await captureFrameBlob();
-    if (!blob) {
-      alert("Camera must be running to verify.");
+    setStatusHtml(<span className="text-[var(--primary)] animate-pulse">Capturing multi-frame samples (Hold still)...</span>);
+    
+    const blobs: Blob[] = [];
+    for (let i = 0; i < 5; i++) {
+      const blob = await captureFrameBlob();
+      if (blob) blobs.push(blob);
+      if (i < 4) await new Promise(r => setTimeout(r, 200));
+    }
+    
+    if (blobs.length === 0) {
+      setStatusHtml(<span className="text-[var(--error)]">Camera must be running to verify.</span>);
       return;
     }
     
-    setStatusHtml(<span className="text-[var(--primary)] animate-pulse">Running biometric pipeline...</span>);
+    setStatusHtml(<span className="text-[var(--primary)] animate-pulse">Analyzing liveness &amp; biometric matches...</span>);
     
     const formData = new FormData();
     formData.append("device_id", "Web_Dashboard");
-    formData.append("file", blob, "capture.jpg");
+    blobs.forEach((blob, idx) => {
+      formData.append("files", blob, `verify_${idx}.jpg`);
+    });
     
     try {
       const res = await fetch("/api/v1/verify", {
@@ -87,7 +115,7 @@ export default function FacultyDashboard() {
       const data = await res.json();
       
       if (res.ok && data.status === "CONFIRMED") {
-        if (data.matched_user_id === user?.id) {
+        if (data.candidate?.faculty_id === user?.id) {
           setShowSuccess(true);
           stopWebcam();
           setTimeout(() => {
@@ -95,13 +123,53 @@ export default function FacultyDashboard() {
             if (user) loadLogs(user.id);
           }, 3000);
         } else {
-           setStatusHtml(<span className="text-[var(--error)]">Matched wrong user: @{data.matched_user_id}.</span>);
+          setStatusHtml(<span className="text-[var(--error)]">Matched wrong user: @{data.candidate?.faculty_id || "unknown"}.</span>);
         }
+      } else if (res.ok && data.status === "MANUAL_REVIEW" && data.candidate?.faculty_id === user?.id) {
+        setStatusHtml(<span className="text-[var(--warning)]">Attendance logged (Flagged for Manual Review).</span>);
+        stopWebcam();
+        if (user) loadLogs(user.id);
       } else {
         setStatusHtml(<span className="text-[var(--error)]">{data.status === "REJECTED" ? "Liveness check failed (Spoof detected)." : "Verification failed or no match found."}</span>);
       }
     } catch (e) {
       setStatusHtml(<span className="text-[var(--error)]">Connection error during verification.</span>);
+    }
+  };
+
+  // Self-registration: capture frame and POST to /register
+  const handleSelfRegister = async () => {
+    if (!isActive) {
+      await startWebcam();
+      setStatusHtml(<span className="text-[var(--primary)]">Camera started. Position your face and click &quot;Capture &amp; Register&quot;.</span>);
+      return;
+    }
+
+    setStatusHtml(<span className="text-[var(--primary)] animate-pulse">Capturing face for registration...</span>);
+    
+    const blob = await captureFrameBlob();
+    if (!blob) {
+      setStatusHtml(<span className="text-[var(--error)]">Could not capture frame. Ensure camera is running.</span>);
+      return;
+    }
+    
+    const formData = new FormData();
+    formData.append("faculty_id", user.id);
+    formData.append("name", user.name);
+    formData.append("file", blob, "registration.jpg");
+    
+    try {
+      const res = await fetch("/api/v1/register", { method: "POST", body: formData });
+      if (res.ok) {
+        setStatusHtml(<span className="text-[var(--success)] font-semibold">✓ Biometrics successfully registered!</span>);
+        stopWebcam();
+        await refreshUser();
+      } else {
+        const err = await res.json();
+        setStatusHtml(<span className="text-[var(--error)]">Registration failed: {err.detail || "Try again"}</span>);
+      }
+    } catch (err) {
+      setStatusHtml(<span className="text-[var(--error)]">Connection error during registration.</span>);
     }
   };
 
@@ -168,15 +236,20 @@ export default function FacultyDashboard() {
             
             <div className="text-left mt-4 border-t border-[var(--divider)] pt-4 text-[0.85rem] flex flex-col gap-2">
                 <div><span className="text-[var(--text-secondary)] font-semibold">Department:</span> {user.department || "General"}</div>
+                <div><span className="text-[var(--text-secondary)] font-semibold">Designation:</span> {user.designation || "Faculty"}</div>
                 <div><span className="text-[var(--text-secondary)] font-semibold">Email:</span> <span className="break-all">{user.email || "-"}</span></div>
             </div>
           </div>
 
           <div className="section-card text-center bg-[var(--surface)] border border-[var(--border-color)] rounded-xl p-6">
             <h2 className="mb-3 text-[1.1rem]">Face Registration</h2>
-            {user.has_embedding ? (
+            {faceIsRegistered ? (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide bg-[#e8f5e9] text-[var(--success)]">
                     ✓ Face Registered
+                </div>
+            ) : user.face_status === "pending_review" ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide bg-[#fff3e0] text-[var(--warning)]">
+                    ⏳ Pending Admin Review
                 </div>
             ) : (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide bg-[#ffebee] text-[var(--error)]">
@@ -184,9 +257,11 @@ export default function FacultyDashboard() {
                 </div>
             )}
             <p className="text-xs text-[var(--text-secondary)] mt-3">
-                {user.has_embedding 
+                {faceIsRegistered 
                     ? "Your biometric template is securely stored and ready for verification." 
-                    : "You must contact an administrator to register your face template."}
+                    : user.face_status === "pending_review"
+                    ? "Your face photo is currently under admin review."
+                    : "Register your face using the webcam to activate biometric verification."}
             </p>
           </div>
 
@@ -251,9 +326,15 @@ export default function FacultyDashboard() {
                     <button onClick={toggleCam} disabled={pendingLock} className="btn btn-outlined font-semibold">
                         {isActive ? "Stop Camera" : "Start Camera"}
                     </button>
-                    {isActive && (
+                    {isActive && faceIsRegistered && (
                         <button onClick={handleVerify} disabled={pendingLock} className="btn btn-contained font-semibold bg-[var(--success)]">
-                            Capture & Verify
+                            Capture &amp; Verify
+                        </button>
+                    )}
+                    {!faceIsRegistered && user.face_status !== "pending_review" && (
+                        <button onClick={handleSelfRegister} disabled={pendingLock} className="btn btn-contained font-semibold flex items-center gap-2">
+                            <UserPlus className="w-4 h-4" />
+                            {isActive ? "Capture & Register" : "Register My Face"}
                         </button>
                     )}
                 </div>

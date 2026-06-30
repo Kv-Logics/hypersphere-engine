@@ -16,7 +16,7 @@ export default function RequestsTab() {
   const fetchData = async () => {
     try {
       const [reqRes, usrRes] = await Promise.all([
-        fetch("/api/v1/admin/pending-requests"),
+        fetch("/api/v1/face-requests?status=pending"),
         fetch("/api/v1/faculty")
       ]);
       
