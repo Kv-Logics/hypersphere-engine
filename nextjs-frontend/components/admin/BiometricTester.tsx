@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Settings, Shield, Camera } from "lucide-react";
 import { useWebcam } from "@/hooks/useWebcam";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 export default function BiometricTester() {
   const [mode, setMode] = useState<"upload" | "camera">("upload");
@@ -10,15 +11,118 @@ export default function BiometricTester() {
   const [antispoof, setAntispoof] = useState(true);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState(0);
   const [totalTimeMs, setTotalTimeMs] = useState(0);
+  const [clientTotalTimeMs, setClientTotalTimeMs] = useState(0);
   
   const { videoRef, isActive, startWebcam, stopWebcam, captureFrameBlob } = useWebcam();
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const landmarkerRef = useRef<FaceLandmarker | null>(null);
+  const animationRef = useRef<number>(0);
+
+  useEffect(() => {
+    async function initMediaPipe() {
+      const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+      const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU"
+        },
+        outputFaceBlendshapes: false,
+        runningMode: "VIDEO",
+        numFaces: 1
+      });
+      landmarkerRef.current = faceLandmarker;
+    }
+    initMediaPipe();
+    
+    return () => {
+      cancelAnimationFrame(animationRef.current);
+      if (landmarkerRef.current) landmarkerRef.current.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode === "camera" && isActive) {
+      animationRef.current = requestAnimationFrame(drawHUD);
+    } else {
+      cancelAnimationFrame(animationRef.current);
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+    }
+    return () => cancelAnimationFrame(animationRef.current);
+  }, [isActive, mode]);
+
+  const drawHUD = () => {
+    if (!isActive || !videoRef.current || !canvasRef.current || !landmarkerRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    if (video.readyState >= 2) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        if (canvas.width !== video.videoWidth) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        try {
+          const results = landmarkerRef.current.detectForVideo(video, performance.now());
+          if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+            const landmarks = results.faceLandmarks[0];
+            let minX = canvas.width, maxX = 0, minY = canvas.height, maxY = 0;
+            
+            landmarks.forEach(lm => {
+              const x = lm.x * canvas.width;
+              const y = lm.y * canvas.height;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            });
+            
+            const w = maxX - minX;
+            const h = maxY - minY;
+            minX = Math.max(0, minX - w * 0.15);
+            maxX = Math.min(canvas.width, maxX + w * 0.15);
+            minY = Math.max(0, minY - h * 0.15);
+            maxY = Math.min(canvas.height, maxY + h * 0.15);
+            
+            const boxW = maxX - minX;
+            const boxH = maxY - minY;
+            const len = Math.min(boxW, boxH) * 0.2;
+            
+            ctx.strokeStyle = "#00e676";
+            ctx.lineWidth = Math.max(3, canvas.width * 0.005);
+            
+            ctx.beginPath(); ctx.moveTo(minX, minY + len); ctx.lineTo(minX, minY); ctx.lineTo(minX + len, minY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(maxX, minY + len); ctx.lineTo(maxX, minY); ctx.lineTo(maxX - len, minY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(minX, maxY - len); ctx.lineTo(minX, maxY); ctx.lineTo(minX + len, maxY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(maxX, maxY - len); ctx.lineTo(maxX, maxY); ctx.lineTo(maxX - len, maxY); ctx.stroke();
+          }
+        } catch(e) { }
+      }
+    }
+    animationRef.current = requestAnimationFrame(drawHUD);
+  };
 
   useEffect(() => {
     if (mode === "upload" && isActive) {
       stopWebcam();
     }
   }, [mode, isActive, stopWebcam]);
+
+  useEffect(() => {
+    fetch('/api/v1/config/antispoof').then(r => r.ok ? r.json() : null).then(d => {
+      if (d && typeof d.enabled === 'boolean') setAntispoof(d.enabled);
+    }).catch(() => {});
+  }, []);
 
   const toggleAntispoofSetting = async (checked: boolean) => {
     setAntispoof(checked);
@@ -29,18 +133,28 @@ export default function BiometricTester() {
     }
   };
 
-  const handleVerify = async (blob: Blob | null) => {
-    if (!blob) {
+  const handleVerify = async (blobs: Blob[]) => {
+    if (!blobs || blobs.length === 0) {
       alert("No image selected or captured.");
       return;
     }
+    
     setLoading(true);
     setResult(null);
-    const startTime = performance.now();
+    setLoadingStage(0);
     
+    const clientStartTime = performance.now();
+    const interval = setInterval(() => {
+        setLoadingStage(s => Math.min(s + 1, 3));
+    }, 400);
+
     const formData = new FormData();
     formData.append("device_id", "Admin_Tester");
-    formData.append("file", blob);
+    blobs.forEach((blob, idx) => {
+        formData.append("files", blob, `verify_${idx}.jpg`);
+    });
+    
+    const startTime = performance.now();
     
     try {
       const res = await fetch("/api/v1/verify", {
@@ -48,25 +162,74 @@ export default function BiometricTester() {
         body: formData
       });
       const data = await res.json();
+      
+      clearInterval(interval);
+      setLoadingStage(4);
+      
       if (res.ok) {
         setResult(data);
         setTotalTimeMs(performance.now() - startTime);
+        setClientTotalTimeMs(performance.now() - clientStartTime);
       } else {
         alert(`Verification failed: ${data.detail || "Server error"}`);
       }
     } catch (err) {
+      clearInterval(interval);
       alert("Verification failed: connection error.");
     } finally {
       setLoading(false);
     }
   };
 
-  const runFileTester = () => handleVerify(file);
+  const runFileTester = () => {
+      if (file) handleVerify([file]);
+  };
   
   const runCameraTester = async () => {
-    const blob = await captureFrameBlob();
-    if (blob) handleVerify(blob);
+    setLoading(true);
+    setResult(null);
+    const blobs: Blob[] = [];
+    for (let i = 0; i < 5; i++) {
+        const blob = await captureFrameBlob();
+        if (blob) blobs.push(blob);
+        if (i < 4) await new Promise(r => setTimeout(r, 200));
+    }
+    setLoading(false);
+    if (blobs.length > 0) {
+        handleVerify(blobs);
+    }
   };
+
+  const renderRunningStepper = () => (
+    <div className="pipeline-stepper mt-4 pt-4 border-t border-[var(--divider)] flex flex-col gap-3">
+        <div className="flex justify-between items-center text-[var(--text-secondary)] mb-1 text-xs font-bold uppercase tracking-wider font-[var(--font-outfit)]">
+            <span>Pipeline Stepper (Running)</span>
+            <div className="flex gap-2">
+                <span className="w-2 h-2 rounded-full bg-[var(--primary)] animate-pulse"></span>
+            </div>
+        </div>
+        {[
+            { label: "Client Frame Capture", activeAt: 0 },
+            { label: "Quality Analysis", activeAt: 1 },
+            { label: "Anti-Spoofing Check", activeAt: 2 },
+            { label: "Vector Search Match", activeAt: 3 }
+        ].map((s, i) => {
+            const isDone = loadingStage > s.activeAt;
+            const isActive = loadingStage === s.activeAt;
+            return (
+                <div key={i} className="stepper-stage relative flex items-center gap-3 text-sm opacity-90">
+                    {i < 3 && <div className="absolute left-[9px] top-[20px] bottom-[-12px] w-[2px] bg-[var(--divider)] z-10" />}
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold z-20 text-white transition-colors duration-300 ${isDone ? 'bg-[var(--success)]' : isActive ? 'bg-[var(--warning)] animate-pulse' : 'bg-gray-300'}`}>
+                        {isDone ? '✓' : isActive ? '...' : '—'}
+                    </div>
+                    <div className={`font-medium ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-primary)]'}`}>
+                        {s.label}
+                    </div>
+                </div>
+            );
+        })}
+    </div>
+  );
 
   const renderPipeline = (stages: any[]) => {
       let totalPipeline = 0;
@@ -74,11 +237,12 @@ export default function BiometricTester() {
       
       return (
           <div className="pipeline-stepper mt-4 pt-4 border-t border-[var(--divider)] flex flex-col gap-3">
-              <div className="flex justify-between items-center text-[var(--text-secondary)] mb-1 text-xs font-bold uppercase tracking-wider font-[var(--font-outfit)]">
+              <div className="flex justify-between items-center text-[var(--text-secondary)] mb-1 text-xs font-bold uppercase tracking-wider font-[var(--font-outfit)] flex-wrap gap-2">
                   <span>Pipeline Stepper</span>
-                  <div className="flex gap-3 text-xs font-medium font-[var(--font-jetbrains)]">
+                  <div className="flex gap-3 text-xs font-medium font-[var(--font-jetbrains)] flex-wrap">
                       <span>Pipeline: <strong className="text-[var(--text-primary)]">{totalPipeline.toFixed(1)} ms</strong></span>
-                      <span>End-to-End: <strong className="text-[var(--text-primary)]">{totalTimeMs.toFixed(1)} ms</strong></span>
+                      <span>Server Total: <strong className="text-[var(--text-primary)]">{totalTimeMs.toFixed(1)} ms</strong></span>
+                      <span>End-to-End: <strong className="text-[var(--text-primary)]">{clientTotalTimeMs.toFixed(1)} ms</strong></span>
                   </div>
               </div>
               {stages.map((stage, i) => (
@@ -89,17 +253,15 @@ export default function BiometricTester() {
                       </div>
                       <div className="flex-1 flex flex-col">
                           <div className="flex justify-between items-center">
-                              <span className="font-medium text-[var(--text-primary)]">{stage.name}</span>
+                              <span className="font-medium text-[var(--text-primary)] flex items-center gap-2">
+                                  {stage.name}
+                                  {stage.is_fallback && <span className="bg-[#fff3e0] text-[#e65100] px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider border border-[#ffe0b2]">Fallback Mode</span>}
+                              </span>
                               <span className="font-mono text-xs text-[var(--text-secondary)]">{stage.latency_ms.toFixed(1)} ms</span>
                           </div>
                           <div className="text-[11px] text-[var(--text-secondary)] break-all mt-0.5">
                               {stage.details}
                           </div>
-                          {stage.is_fallback && (
-                              <div className="text-[#e65100] text-[10px] font-medium mt-1 flex items-center gap-1 bg-[#ffe0b2] px-1 py-0.5 rounded w-fit uppercase">
-                                  ⚠️ Warning: Mock fallback model active
-                              </div>
-                          )}
                       </div>
                   </div>
               ))}
@@ -153,7 +315,11 @@ export default function BiometricTester() {
                   autoPlay 
                   playsInline 
                   muted 
-                  className={`w-full h-full object-cover scale-x-[-1] ${!isActive ? 'hidden' : 'block'}`} 
+                  className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] ${!isActive ? 'hidden' : 'block'}`} 
+                />
+                <canvas 
+                  ref={canvasRef} 
+                  className={`absolute inset-0 w-full h-full object-cover pointer-events-none scale-x-[-1] ${!isActive ? 'hidden' : 'block'}`}
                 />
                 {!isActive && (
                   <div className="text-[var(--text-secondary)] flex flex-col items-center gap-2">
@@ -167,8 +333,8 @@ export default function BiometricTester() {
                   {isActive ? "Stop Camera" : "Start Camera"}
                 </button>
                 {isActive && (
-                  <button onClick={runCameraTester} disabled={loading} className="btn btn-contained text-xs py-1.5 px-3 bg-[var(--success)] hover:bg-[var(--success)]">
-                    {loading ? "Scanning..." : "Scan & Verify"}
+                  <button onClick={runCameraTester} disabled={loading} className="btn btn-contained text-xs py-1.5 px-3 bg-[var(--success)] hover:bg-[var(--success)] disabled:opacity-50 flex items-center gap-2">
+                    {loading ? <><span className="w-2 h-2 rounded-full bg-white animate-pulse"></span> Scanning 5 Frames...</> : "Scan & Verify"}
                   </button>
                 )}
               </div>
@@ -193,7 +359,12 @@ export default function BiometricTester() {
         </div>
         
         <div className="bg-[#fafafa] border border-dashed border-[var(--border-color)] rounded-lg min-h-[320px] p-6 flex flex-col justify-center">
-          {!result ? (
+          {loading && !result ? (
+              <div className="w-full h-full flex flex-col">
+                  <h3 className="mt-0 mb-4 font-[var(--font-outfit)] text-lg text-[var(--text-primary)] text-center">Processing Request...</h3>
+                  {renderRunningStepper()}
+              </div>
+          ) : !result ? (
             <div className="text-center text-[var(--text-secondary)] flex flex-col items-center">
               <Shield className="w-12 h-12 mb-4 opacity-50" strokeWidth={1.5} />
               <p className="m-0 text-sm">Upload a file or scan your face to see real-time verification accuracy and liveness details.</p>
@@ -202,7 +373,7 @@ export default function BiometricTester() {
             <div className="w-full">
               <h3 className="mt-0 mb-4 font-[var(--font-outfit)] text-lg text-[var(--text-primary)] text-center">Scan Result</h3>
               
-              <div className={`mx-auto mb-6 text-sm px-5 py-2 rounded-full flex w-fit uppercase font-semibold tracking-wide ${result.status === "CONFIRMED" ? "bg-[var(--success)] bg-opacity-10 text-[var(--success)] border border-[var(--success)]" : "bg-[var(--error)] bg-opacity-10 text-[var(--error)] border border-[var(--error)]"}`}>
+              <div className={`mx-auto mb-6 text-sm px-5 py-2 rounded-full flex w-fit uppercase font-semibold tracking-wide ${result.status === "CONFIRMED" ? "bg-[var(--success)] bg-opacity-10 text-[var(--success)] border border-[var(--success)]" : result.status === "MANUAL_REVIEW" ? "bg-[var(--warning)] bg-opacity-10 text-[var(--warning)] border border-[var(--warning)]" : "bg-[var(--error)] bg-opacity-10 text-[var(--error)] border border-[var(--error)]"}`}>
                 {result.status}
               </div>
               

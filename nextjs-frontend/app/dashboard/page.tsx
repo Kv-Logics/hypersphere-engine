@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Camera, ShieldAlert, CheckCircle2, ShieldQuestion, Clock, UserPlus } from "lucide-react";
+import { LogOut, User, Camera, ShieldAlert, CheckCircle2, ShieldQuestion, UserPlus } from "lucide-react";
 import { useWebcam } from "@/hooks/useWebcam";
 import { parseUTCDateTime } from "@/lib/utils";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 export default function FacultyDashboard() {
   const router = useRouter();
@@ -20,8 +21,13 @@ export default function FacultyDashboard() {
   const [statusHtml, setStatusHtml] = useState<React.ReactNode>(<span className="text-[var(--text-secondary)] italic">Camera is inactive.</span>);
   const [pendingLock, setPendingLock] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   
   const { videoRef, isActive, startWebcam, stopWebcam, captureFrameBlob } = useWebcam();
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const landmarkerRef = useRef<FaceLandmarker | null>(null);
+  const animationRef = useRef<number>(0);
 
   useEffect(() => {
     const userData = localStorage.getItem("user");
@@ -34,6 +40,99 @@ export default function FacultyDashboard() {
       router.push("/");
     }
   }, [router]);
+
+  // MediaPipe Initialization
+  useEffect(() => {
+    async function initMediaPipe() {
+      const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+      const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+          delegate: "GPU"
+        },
+        outputFaceBlendshapes: false,
+        runningMode: "VIDEO",
+        numFaces: 1
+      });
+      landmarkerRef.current = faceLandmarker;
+    }
+    initMediaPipe();
+    
+    return () => {
+      cancelAnimationFrame(animationRef.current);
+      if (landmarkerRef.current) landmarkerRef.current.close();
+    };
+  }, []);
+
+  // HUD Drawing Loop
+  useEffect(() => {
+    if (isActive && !showSuccess) {
+      animationRef.current = requestAnimationFrame(drawHUD);
+    } else {
+      cancelAnimationFrame(animationRef.current);
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+    }
+    return () => cancelAnimationFrame(animationRef.current);
+  }, [isActive, showSuccess]);
+
+  const drawHUD = () => {
+    if (!isActive || !videoRef.current || !canvasRef.current || !landmarkerRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    if (video.readyState >= 2) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        if (canvas.width !== video.videoWidth) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        try {
+          const results = landmarkerRef.current.detectForVideo(video, performance.now());
+          if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+            const landmarks = results.faceLandmarks[0];
+            let minX = canvas.width, maxX = 0, minY = canvas.height, maxY = 0;
+            
+            landmarks.forEach(lm => {
+              const x = lm.x * canvas.width;
+              const y = lm.y * canvas.height;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            });
+            
+            const w = maxX - minX;
+            const h = maxY - minY;
+            minX = Math.max(0, minX - w * 0.15);
+            maxX = Math.min(canvas.width, maxX + w * 0.15);
+            minY = Math.max(0, minY - h * 0.15);
+            maxY = Math.min(canvas.height, maxY + h * 0.15);
+            
+            const boxW = maxX - minX;
+            const boxH = maxY - minY;
+            const len = Math.min(boxW, boxH) * 0.2;
+            
+            ctx.strokeStyle = "#00e676";
+            ctx.lineWidth = Math.max(3, canvas.width * 0.005);
+            
+            ctx.beginPath(); ctx.moveTo(minX, minY + len); ctx.lineTo(minX, minY); ctx.lineTo(minX + len, minY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(maxX, minY + len); ctx.lineTo(maxX, minY); ctx.lineTo(maxX - len, minY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(minX, maxY - len); ctx.lineTo(minX, maxY); ctx.lineTo(minX + len, maxY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(maxX, maxY - len); ctx.lineTo(maxX, maxY); ctx.lineTo(maxX - len, maxY); ctx.stroke();
+          }
+        } catch(e) { }
+      }
+    }
+    animationRef.current = requestAnimationFrame(drawHUD);
+  };
 
   const loadLogs = async (userId: string) => {
     try {
@@ -83,9 +182,37 @@ export default function FacultyDashboard() {
 
   const faceIsRegistered = user?.face_status === "registered" || user?.face_status === "approved";
 
-  // Multi-frame verification (5 frames with 200ms intervals, matching legacy behavior)
+  // Auto-start webcam when user has registered face and no lock exists
+  useEffect(() => {
+    if (user && faceIsRegistered && !isActive && !pendingLock) {
+      startWebcam();
+    }
+  }, [user, faceIsRegistered, isActive, pendingLock, startWebcam]);
+
+  // Continuous Verification Loop
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const runLoop = async () => {
+      if (!isActive || !faceIsRegistered || pendingLock || showSuccess || isVerifying) return;
+      
+      setIsVerifying(true);
+      await handleVerify();
+      setIsVerifying(false);
+      
+      // Schedule next run
+      timeoutId = setTimeout(runLoop, 2000);
+    };
+
+    if (isActive && faceIsRegistered && !pendingLock && !showSuccess && !isVerifying) {
+      timeoutId = setTimeout(runLoop, 1000);
+    }
+
+    return () => clearTimeout(timeoutId);
+  }, [isActive, faceIsRegistered, pendingLock, showSuccess, isVerifying]);
+
   const handleVerify = async () => {
-    setStatusHtml(<span className="text-[var(--primary)] animate-pulse">Capturing multi-frame samples (Hold still)...</span>);
+    setStatusHtml(<span className="text-[var(--primary)] animate-pulse">Scanning identity &amp; liveness...</span>);
     
     const blobs: Blob[] = [];
     for (let i = 0; i < 5; i++) {
@@ -98,8 +225,6 @@ export default function FacultyDashboard() {
       setStatusHtml(<span className="text-[var(--error)]">Camera must be running to verify.</span>);
       return;
     }
-    
-    setStatusHtml(<span className="text-[var(--primary)] animate-pulse">Analyzing liveness &amp; biometric matches...</span>);
     
     const formData = new FormData();
     formData.append("device_id", "Web_Dashboard");
@@ -117,18 +242,18 @@ export default function FacultyDashboard() {
       if (res.ok && data.status === "CONFIRMED") {
         if (data.candidate?.faculty_id === user?.id) {
           setShowSuccess(true);
-          stopWebcam();
           setTimeout(() => {
             setShowSuccess(false);
             if (user) loadLogs(user.id);
-          }, 3000);
+          }, 4000);
         } else {
-          setStatusHtml(<span className="text-[var(--error)]">Matched wrong user: @{data.candidate?.faculty_id || "unknown"}.</span>);
+          setStatusHtml(<span className="text-[var(--warning)]">Waiting for registered user.</span>);
         }
       } else if (res.ok && data.status === "MANUAL_REVIEW" && data.candidate?.faculty_id === user?.id) {
         setStatusHtml(<span className="text-[var(--warning)]">Attendance logged (Flagged for Manual Review).</span>);
-        stopWebcam();
         if (user) loadLogs(user.id);
+        // Pause briefly before continuing
+        await new Promise(r => setTimeout(r, 3000));
       } else {
         setStatusHtml(<span className="text-[var(--error)]">{data.status === "REJECTED" ? "Liveness check failed (Spoof detected)." : "Verification failed or no match found."}</span>);
       }
@@ -137,7 +262,6 @@ export default function FacultyDashboard() {
     }
   };
 
-  // Self-registration: capture frame and POST to /register
   const handleSelfRegister = async () => {
     if (!isActive) {
       await startWebcam();
@@ -162,7 +286,6 @@ export default function FacultyDashboard() {
       const res = await fetch("/api/v1/register", { method: "POST", body: formData });
       if (res.ok) {
         setStatusHtml(<span className="text-[var(--success)] font-semibold">✓ Biometrics successfully registered!</span>);
-        stopWebcam();
         await refreshUser();
       } else {
         const err = await res.json();
@@ -311,9 +434,11 @@ export default function FacultyDashboard() {
                     </div>
                 )}
 
-                <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover scale-x-[-1] ${!isActive && 'hidden'}`} />
+                <video ref={videoRef} autoPlay playsInline muted className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] ${!isActive && 'hidden'}`} />
+                <canvas ref={canvasRef} className={`absolute inset-0 w-full h-full object-cover pointer-events-none scale-x-[-1] ${!isActive || showSuccess ? 'hidden' : 'block'}`} />
+                
                 {!isActive && !pendingLock && !showSuccess && (
-                    <div className="text-[var(--text-secondary)] flex flex-col items-center opacity-50">
+                    <div className="text-[var(--text-secondary)] flex flex-col items-center opacity-50 relative z-10">
                         <Camera className="w-12 h-12 mb-3" />
                         <p className="text-sm text-center">Webcam is currently inactive.<br/>Start the camera to begin live face capture.</p>
                     </div>
@@ -326,11 +451,6 @@ export default function FacultyDashboard() {
                     <button onClick={toggleCam} disabled={pendingLock} className="btn btn-outlined font-semibold">
                         {isActive ? "Stop Camera" : "Start Camera"}
                     </button>
-                    {isActive && faceIsRegistered && (
-                        <button onClick={handleVerify} disabled={pendingLock} className="btn btn-contained font-semibold bg-[var(--success)]">
-                            Capture &amp; Verify
-                        </button>
-                    )}
                     {!faceIsRegistered && user.face_status !== "pending_review" && (
                         <button onClick={handleSelfRegister} disabled={pendingLock} className="btn btn-contained font-semibold flex items-center gap-2">
                             <UserPlus className="w-4 h-4" />

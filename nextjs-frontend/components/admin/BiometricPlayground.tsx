@@ -41,6 +41,12 @@ export default function BiometricPlayground() {
   }, []);
 
   useEffect(() => {
+    fetch('/api/v1/config/antispoof').then(r => r.ok ? r.json() : null).then(d => {
+      if (d && typeof d.enabled === 'boolean') setAntispoof(d.enabled);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (isActive) {
       animationRef.current = requestAnimationFrame(drawHUD);
       loopRef.current = setInterval(runInferenceLoop, 500);
@@ -61,7 +67,7 @@ export default function BiometricPlayground() {
   const toggleAntispoofSetting = async (checked: boolean) => {
     setAntispoof(checked);
     try {
-      await fetch(`/api/v1/config/antispoof?enabled=${checked}`, { method: "POST" });
+      await fetch('/api/v1/config/antispoof', { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: checked }) });
     } catch (e) {
       console.error(e);
     }

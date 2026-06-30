@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, FileWarning, AlertTriangle, CalendarDays, Camera, ScanFace, Activity } from "lucide-react";
+import { Users, FileWarning, AlertTriangle, CalendarDays, Camera, ScanFace, Activity, Terminal, Database } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -36,12 +36,14 @@ export default function Sidebar() {
   }, []);
 
   const navItems = [
+    { name: "Operator Terminal", path: "/admin/terminal", icon: <Terminal size={18} /> },
     { name: "User Management", path: "/admin/users", icon: <Users size={18} /> },
     { name: "Pending Requests", path: "/admin/requests", icon: <FileWarning size={18} />, badge: pendingCount, badgeColor: "var(--warning)" },
     { name: "Drift Reviews", path: "/admin/drifts", icon: <AlertTriangle size={18} />, badge: driftCount, badgeColor: "var(--error)" },
     { name: "Attendance Reports", path: "/admin/reports", icon: <CalendarDays size={18} /> },
     { name: "Biometric Tester", path: "/admin/tester", icon: <Camera size={18} /> },
     { name: "Biometric Playground", path: "/admin/playground", icon: <ScanFace size={18} /> },
+    { name: "Enrolled Profiles", path: "/admin/registry", icon: <Database size={18} /> },
     { name: "System Health", path: "/admin/health", icon: <Activity size={18} /> },
   ];
 
