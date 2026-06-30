@@ -47,7 +47,7 @@ face_embeddings = sqlalchemy.Table(
     sqlalchemy.Column("faculty_id", sqlalchemy.String(50), sqlalchemy.ForeignKey("faculty.id", ondelete="CASCADE"), nullable=False),
     sqlalchemy.Column("embedding", Vector(512) if is_postgres else sqlalchemy.LargeBinary(), nullable=False),
     sqlalchemy.Column("model_version", sqlalchemy.String(50), default="arcface_w600k_r50_v1", nullable=False),
-    sqlalchemy.Column("drift_review_pending", sqlalchemy.Boolean(), default=False, nullable=False),
+    sqlalchemy.Column("drift_review_pending", sqlalchemy.Boolean(), default=False, server_default=sqlalchemy.text("false"), nullable=False),
     sqlalchemy.Column("raw_norm", sqlalchemy.Float(), nullable=True),
     sqlalchemy.Column("created_at", sqlalchemy.DateTime(), server_default=sqlalchemy.func.now())
 )
@@ -101,6 +101,8 @@ async def init_db():
         await conn.execute(sqlalchemy.text("ALTER TABLE faculty ADD COLUMN IF NOT EXISTS face_status VARCHAR(20) DEFAULT 'none';"))
         await conn.execute(sqlalchemy.text("ALTER TABLE faculty ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
         await conn.execute(sqlalchemy.text("ALTER TABLE face_embeddings ADD COLUMN IF NOT EXISTS raw_norm FLOAT;"))
+        await conn.execute(sqlalchemy.text("ALTER TABLE face_embeddings ADD COLUMN IF NOT EXISTS drift_review_pending BOOLEAN DEFAULT false;"))
+        await conn.execute(sqlalchemy.text("ALTER TABLE face_embeddings ALTER COLUMN drift_review_pending SET DEFAULT false;"))
 
         # Create HNSW index for cosine distance to ensure optimal nearest neighbor search performance
         await conn.execute(sqlalchemy.text(
@@ -114,8 +116,8 @@ async def init_db():
         
         # Migrate existing embeddings from faculty to face_embeddings table
         migrate_query = """
-            INSERT INTO face_embeddings (faculty_id, embedding, model_version, created_at)
-            SELECT id, embedding, 'arcface_w600k_r50_v1', NOW()
+            INSERT INTO face_embeddings (faculty_id, embedding, model_version, drift_review_pending, created_at)
+            SELECT id, embedding, 'arcface_w600k_r50_v1', false, NOW()
             FROM faculty
             WHERE embedding IS NOT NULL
             AND id NOT IN (SELECT DISTINCT faculty_id FROM face_embeddings);
