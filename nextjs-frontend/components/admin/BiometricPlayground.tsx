@@ -18,6 +18,7 @@ export default function BiometricPlayground() {
   const loopRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    let isCurrent = true;
     async function initMediaPipe() {
       const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
       const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
@@ -29,14 +30,22 @@ export default function BiometricPlayground() {
         runningMode: "VIDEO",
         numFaces: 1
       });
-      landmarkerRef.current = faceLandmarker;
+      if (isCurrent) {
+        landmarkerRef.current = faceLandmarker;
+      } else {
+        faceLandmarker.close();
+      }
     }
     initMediaPipe();
     
     return () => {
+      isCurrent = false;
       cancelAnimationFrame(animationRef.current);
       if (loopRef.current) clearInterval(loopRef.current);
-      if (landmarkerRef.current) landmarkerRef.current.close();
+      if (landmarkerRef.current) {
+        landmarkerRef.current.close();
+        landmarkerRef.current = null;
+      }
     };
   }, []);
 
