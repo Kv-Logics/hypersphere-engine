@@ -487,11 +487,11 @@ export default function FacultyDashboard() {
 
         {/* Right Column */}
         <aside className="flex flex-col">
-          <div className="section-card flex flex-col flex-1 bg-[var(--surface)] border border-[var(--border-color)] rounded-xl p-6 min-h-[400px]">
+          <div className="section-card flex flex-col bg-[var(--surface)] border border-[var(--border-color)] rounded-xl p-6 h-[480px]">
             <h2 className="mb-4 text-[1.1rem]">Attendance Logs</h2>
-            <div className="overflow-y-auto pr-1">
+            <div className="flex-1 overflow-y-auto pr-1">
                 <table className="w-full text-[0.85rem] text-left border-collapse">
-                    <thead>
+                    <thead className="sticky top-0 bg-[var(--surface)] z-10">
                         <tr>
                             <th className="text-[var(--text-secondary)] font-semibold uppercase text-[0.75rem] p-2 border-b border-[var(--divider)]">Date/Time</th>
                             <th className="text-[var(--text-secondary)] font-semibold uppercase text-[0.75rem] p-2 border-b border-[var(--divider)] text-center">Status</th>
