@@ -58,7 +58,11 @@ export default function FacultyDashboard() {
       if (isCurrent) {
         landmarkerRef.current = faceLandmarker;
       } else {
-        faceLandmarker.close();
+        try {
+          faceLandmarker.close();
+        } catch (e) {
+          console.warn("Failed to close unneeded FaceLandmarker:", e);
+        }
       }
     }
     initMediaPipe();
@@ -67,7 +71,11 @@ export default function FacultyDashboard() {
       isCurrent = false;
       cancelAnimationFrame(animationRef.current);
       if (landmarkerRef.current) {
-        landmarkerRef.current.close();
+        try {
+          landmarkerRef.current.close();
+        } catch (e) {
+          console.warn("Failed to close FaceLandmarker:", e);
+        }
         landmarkerRef.current = null;
       }
     };
@@ -491,9 +499,9 @@ export default function FacultyDashboard() {
             <h2 className="mb-4 text-[1.1rem]">Attendance Logs</h2>
             <div className="flex-1 overflow-y-auto pr-1">
                 <table className="w-full text-[0.85rem] text-left border-collapse">
-                    <thead className="sticky top-0 bg-[var(--surface)] z-10">
+                    <thead className="sticky top-0 bg-[var(--surface)] z-20">
                         <tr>
-                            <th className="text-[var(--text-secondary)] font-semibold uppercase text-[0.75rem] p-2 border-b border-[var(--divider)]">Date/Time</th>
+                            <th className="text-[var(--text-secondary)] font-semibold uppercase text-[0.75rem] p-2 border-b border-[var(--divider)]">Time</th>
                             <th className="text-[var(--text-secondary)] font-semibold uppercase text-[0.75rem] p-2 border-b border-[var(--divider)] text-center">Status</th>
                             <th className="text-[var(--text-secondary)] font-semibold uppercase text-[0.75rem] p-2 border-b border-[var(--divider)] text-right">Match</th>
                         </tr>
@@ -504,26 +512,40 @@ export default function FacultyDashboard() {
                         ) : logs.length === 0 ? (
                             <tr><td colSpan={3} className="text-center text-[var(--text-secondary)] p-8">No logs loaded.</td></tr>
                         ) : (
-                            logs.slice(0, 15).map(log => {
-                                const dt = parseUTCDateTime(log.timestamp);
-                                const isConfirmed = log.status === "CONFIRMED";
-                                return (
-                                    <tr key={log.id}>
-                                        <td className="p-2 border-b border-[var(--divider)] text-[var(--text-primary)] py-3">
-                                            {dt.toLocaleDateString()}<br/>
-                                            <span className="text-xs text-[var(--text-secondary)] font-mono">{dt.toLocaleTimeString()}</span>
-                                        </td>
-                                        <td className="p-2 border-b border-[var(--divider)] text-center">
-                                            <span className={`inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[0.7rem] font-bold ${isConfirmed ? 'bg-[var(--success)] text-white' : 'bg-[var(--error)] text-white'}`}>
-                                                {isConfirmed ? '✓' : '✗'}
-                                            </span>
-                                        </td>
-                                        <td className="p-2 border-b border-[var(--divider)] text-right font-mono text-xs text-[var(--text-primary)]">
-                                            {log.similarity_score ? `${Math.round(log.similarity_score * 100)}%` : '-'}
-                                        </td>
-                                    </tr>
-                                );
-                            })
+                            (() => {
+                                let lastDate = "";
+                                return logs.slice(0, 15).map(log => {
+                                    const dt = parseUTCDateTime(log.timestamp);
+                                    const dateStr = dt.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+                                    const showDateHeader = dateStr !== lastDate;
+                                    lastDate = dateStr;
+                                    const isConfirmed = log.status === "CONFIRMED";
+                                    return (
+                                        <React.Fragment key={log.id}>
+                                            {showDateHeader && (
+                                                <tr>
+                                                    <td colSpan={3} className="p-2 py-1.5 font-bold text-xs text-[var(--primary)] bg-[#f8f9fa] border-b border-[var(--divider)] sticky top-[33px] z-10">
+                                                        {dateStr}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            <tr>
+                                                <td className="p-2 border-b border-[var(--divider)] text-[var(--text-primary)] py-3 font-mono text-xs">
+                                                    {dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                </td>
+                                                <td className="p-2 border-b border-[var(--divider)] text-center">
+                                                    <span className={`inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[0.7rem] font-bold ${isConfirmed ? 'bg-[var(--success)] text-white' : 'bg-[var(--error)] text-white'}`}>
+                                                        {isConfirmed ? '✓' : '✗'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-2 border-b border-[var(--divider)] text-right font-mono text-xs text-[var(--text-primary)]">
+                                                    {log.similarity_score ? `${Math.round(log.similarity_score * 100)}%` : '-'}
+                                                </td>
+                                            </tr>
+                                        </React.Fragment>
+                                    );
+                                });
+                            })()
                         )}
                     </tbody>
                 </table>

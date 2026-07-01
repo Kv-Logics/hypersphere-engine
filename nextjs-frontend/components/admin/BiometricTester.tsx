@@ -37,7 +37,11 @@ export default function BiometricTester() {
       if (isCurrent) {
         landmarkerRef.current = faceLandmarker;
       } else {
-        faceLandmarker.close();
+        try {
+          faceLandmarker.close();
+        } catch (e) {
+          console.warn("Failed to close unneeded FaceLandmarker:", e);
+        }
       }
     }
     initMediaPipe();
@@ -46,7 +50,11 @@ export default function BiometricTester() {
       isCurrent = false;
       cancelAnimationFrame(animationRef.current);
       if (landmarkerRef.current) {
-        landmarkerRef.current.close();
+        try {
+          landmarkerRef.current.close();
+        } catch (e) {
+          console.warn("Failed to close FaceLandmarker:", e);
+        }
         landmarkerRef.current = null;
       }
     };
