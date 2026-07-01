@@ -191,12 +191,7 @@ export default function FacultyDashboard() {
 
   const faceIsRegistered = user?.face_status === "registered" || user?.face_status === "approved";
 
-  // Auto-start webcam when user has registered face and no lock exists
-  useEffect(() => {
-    if (user && faceIsRegistered && !isActive && !pendingLock) {
-      startWebcam();
-    }
-  }, [user, faceIsRegistered, isActive, pendingLock, startWebcam]);
+  // Auto-start is disabled to allow explicit camera permission via button click
 
   // Continuous Verification Loop
   useEffect(() => {
@@ -457,14 +452,33 @@ export default function FacultyDashboard() {
             <div className="p-5 flex flex-col gap-4 border-t border-[var(--divider)]">
                 <div className="text-sm text-center min-h-[20px]">{statusHtml}</div>
                 <div className="flex justify-center gap-4">
-                    <button onClick={toggleCam} disabled={pendingLock} className="btn btn-outlined font-semibold">
-                        {isActive ? "Stop Camera" : "Start Camera"}
-                    </button>
-                    {!faceIsRegistered && user.face_status !== "pending_review" && (
-                        <button onClick={handleSelfRegister} disabled={pendingLock} className="btn btn-contained font-semibold flex items-center gap-2">
-                            <UserPlus className="w-4 h-4" />
-                            {isActive ? "Capture & Register" : "Register My Face"}
-                        </button>
+                    {faceIsRegistered ? (
+                        isActive ? (
+                            <button onClick={stopWebcam} className="btn btn-outlined font-semibold border-[rgba(211,47,47,0.3)] text-[var(--error)]">
+                                Stop Camera
+                            </button>
+                        ) : (
+                            <button onClick={startWebcam} disabled={pendingLock} className="btn btn-contained font-semibold bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white">
+                                Mark Attendance
+                            </button>
+                        )
+                    ) : (
+                        user.face_status !== "pending_review" && (
+                            isActive ? (
+                                <>
+                                    <button onClick={stopWebcam} className="btn btn-outlined font-semibold">
+                                        Stop Camera
+                                    </button>
+                                    <button onClick={handleSelfRegister} disabled={pendingLock} className="btn btn-contained font-semibold flex items-center gap-2">
+                                        <UserPlus className="w-4 h-4" /> Capture &amp; Register
+                                    </button>
+                                </>
+                            ) : (
+                                <button onClick={startWebcam} disabled={pendingLock} className="btn btn-contained font-semibold flex items-center gap-2">
+                                    <UserPlus className="w-4 h-4" /> Register My Face
+                                </button>
+                            )
+                        )
                     )}
                 </div>
             </div>
