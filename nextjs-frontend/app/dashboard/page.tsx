@@ -291,7 +291,7 @@ export default function FacultyDashboard() {
             }
 
             const isPoseOk = yaw <= 20 && pitch <= 20 && roll <= 20;
-            const isAreaOk = faceArea >= 0.15;
+            const isAreaOk = faceArea >= 0.06;
 
             // Render Premium HUD UI Panel
             ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
@@ -435,7 +435,7 @@ export default function FacultyDashboard() {
       return;
     }
     
-    if (faceState.faceArea < 0.15) {
+    if (faceState.faceArea < 0.06) {
       setStatusHtml(<span className="text-[var(--warning)] font-semibold">Please move closer to the camera.</span>);
       return;
     }
@@ -580,9 +580,9 @@ export default function FacultyDashboard() {
   if (!user) return null;
 
   return (
-    <div className="font-[var(--font-roboto)] h-screen flex flex-col overflow-hidden bg-[#f8f9fa]">
+    <div className="font-[var(--font-roboto)] h-screen flex flex-col overflow-hidden">
       {/* App Bar */}
-      <header className="app-bar flex justify-between items-center bg-[var(--surface)] border-b border-[var(--divider)] px-6 py-4 shadow-[0_2px_10px_rgba(0,0,0,0.02)] z-50 sticky top-0">
+      <header className="app-bar flex justify-between items-center bg-[var(--surface)] border-b border-[var(--divider)] px-6 shadow-[0_2px_10px_rgba(0,0,0,0.02)] z-50 flex-shrink-0">
         <div className="logo-area flex items-center gap-3">
             <div className="text-[var(--primary)] bg-[#e3f2fd] p-1.5 rounded-lg">
                 <ShieldQuestion className="w-5 h-5" />
@@ -610,7 +610,7 @@ export default function FacultyDashboard() {
         </button>
       </header>
 
-      <div className="w-full px-6 py-6 lg:h-[calc(100vh-73px)] grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-6 lg:overflow-hidden">
+      <div className="w-full px-6 py-6 lg:h-[calc(100vh-64px)] grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-6 lg:overflow-hidden flex-1">
         
         {/* Left Column - Face Biometric Terminal */}
         <main className="flex flex-col lg:h-full lg:overflow-hidden">
