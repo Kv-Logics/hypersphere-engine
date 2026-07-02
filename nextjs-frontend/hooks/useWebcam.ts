@@ -39,11 +39,11 @@ export function useWebcam() {
     };
   }, [stopWebcam]);
 
-  const captureFrameBlob = useCallback(async (): Promise<Blob | null> => {
+  const captureFrameBlob = useCallback(async (targetWidth = 640, targetHeight = 480, quality = 0.85): Promise<Blob | null> => {
     if (!videoRef.current || !isActive) return null;
     const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.translate(canvas.width, 0);
@@ -51,7 +51,7 @@ export function useWebcam() {
     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     
     return new Promise((resolve) => {
-        canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.9);
+        canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
     });
   }, [isActive]);
 

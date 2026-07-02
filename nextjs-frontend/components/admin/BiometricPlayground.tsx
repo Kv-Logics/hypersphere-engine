@@ -16,28 +16,42 @@ export default function BiometricPlayground() {
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
   const animationRef = useRef<number>(0);
   const loopRef = useRef<NodeJS.Timeout | null>(null);
+  const initTimeRef = useRef<number>(0);
 
   useEffect(() => {
     let isCurrent = true;
     async function initMediaPipe() {
       const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-      const faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-          delegate: "GPU"
-        },
-        outputFaceBlendshapes: false,
-        runningMode: "VIDEO",
-        numFaces: 1
-      });
-      if (isCurrent) {
+      const originalConsoleLog = console.log;
+      const originalConsoleInfo = console.info;
+      const originalConsoleWarn = console.warn;
+      const originalConsoleError = console.error;
+      console.log = () => {};
+      console.info = () => {};
+      console.warn = () => {};
+      console.error = () => {};
+      
+      let faceLandmarker;
+      try {
+        faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "GPU"
+          },
+          outputFaceBlendshapes: false,
+          runningMode: "VIDEO",
+          numFaces: 1
+        });
+      } finally {
+        console.log = originalConsoleLog;
+        console.info = originalConsoleInfo;
+        console.warn = originalConsoleWarn;
+        console.error = originalConsoleError;
+      }
+
+      if (isCurrent && faceLandmarker) {
         landmarkerRef.current = faceLandmarker;
-      } else {
-        try {
-          faceLandmarker.close();
-        } catch (e) {
-          console.warn("Failed to close unneeded FaceLandmarker:", e);
-        }
+        initTimeRef.current = Date.now();
       }
     }
     initMediaPipe();
@@ -47,10 +61,17 @@ export default function BiometricPlayground() {
       cancelAnimationFrame(animationRef.current);
       if (loopRef.current) clearInterval(loopRef.current);
       if (landmarkerRef.current) {
-        try {
-          landmarkerRef.current.close();
-        } catch (e) {
-          console.warn("Failed to close FaceLandmarker:", e);
+        const timeElapsed = Date.now() - initTimeRef.current;
+        if (timeElapsed > 5000) {
+          const originalConsoleError = console.error;
+          console.error = () => {};
+          try {
+            landmarkerRef.current.close();
+          } catch (e) {
+            console.warn("Failed to close FaceLandmarker:", e);
+          } finally {
+            console.error = originalConsoleError;
+          }
         }
         landmarkerRef.current = null;
       }

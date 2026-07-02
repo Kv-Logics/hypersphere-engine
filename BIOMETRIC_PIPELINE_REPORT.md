@@ -150,9 +150,50 @@ CREATE TABLE attendance_records (
     similarity_score DOUBLE PRECISION,
     liveness_score DOUBLE PRECISION,
     quality_score DOUBLE PRECISION,
-    device_id VARCHAR(50)
+    device_id VARCHAR(50),
+    location_name VARCHAR(100),          -- Resolved building name from geofencing engine
+    latitude DOUBLE PRECISION,           -- GPS latitude
+    longitude DOUBLE PRECISION           -- GPS longitude
 );
 ```
+
+---
+
+## 9. Campus GPS & Geofencing Integration
+
+To guarantee that attendance is marked strictly within authorized zones and tag records with spatial metadata, the system implements a cross-origin message bridge with the NITT Geofencing Engine:
+
+```
+[Geofencing Map (Port 8080)]
+       │
+       ▼ (window.parent.postMessage - LOCATION_UPDATE)
+[Next.js Dashboard (Port 3000)]
+       │
+       ├─► (Render Location HUD Badge in Header)
+       │
+       ▼ (Multipart Form payload: location_name, latitude, longitude)
+[FastAPI Backend (Port 8000)]
+       │
+       ▼ (Insert query with spatial attributes)
+[PostgreSQL Database]
+```
+
+### Communication Protocol
+The Leaflet-based geolocator runs on `http://localhost:8080/map/locate.html` inside a secure Next.js iframe configured with `allow="geolocation"`. As coordinates update, it resolves the location via a Ray-Casting algorithm against geoJSON polygons of NITT buildings. Once resolved, the iframe dispatches a message to the parent window:
+
+```javascript
+window.parent.postMessage({
+  type: "LOCATION_UPDATE",
+  latitude: lat,
+  longitude: lon,
+  insideCampus: insideCampus,
+  buildingName: activeBuilding ? activeBuilding.name : (insideCampus ? "NIT Trichy Grounds" : "Off Campus"),
+  buildingId: activeBuilding ? activeBuilding.id : null
+}, "*");
+```
+
+The Next.js host intercepts this payload, displays it in the header HUD, and attaches the telemetry to the `/verify` request, which stores it in `attendance_records`.
+
 
 ### High-Performance HNSW Indexing
 To support rapid, sub-millisecond similarity search, a Hierarchical Navigable Small World (HNSW) index is created over the `embedding` column using Cosine operations:

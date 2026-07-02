@@ -79,7 +79,7 @@ class VectorIndexManager:
             LIMIT :limit
         """
         async with database.transaction():
-            await database.execute("SET hnsw.ef_search = 40;")
+            await database.execute("SET hnsw.ef_search = 80;")
             results = await database.fetch_all(
                 query=raw_query, 
                 values={"query_val": str(emb_list), "limit": candidate_limit}

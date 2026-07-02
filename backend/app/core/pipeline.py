@@ -104,7 +104,11 @@ class FacePipeline:
                 return
         try:
             import onnxruntime as ort
-            self.recog_session = ort.InferenceSession(path, providers=['CPUExecutionProvider'])
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = 4
+            opts.inter_op_num_threads = 4
+            opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            self.recog_session = ort.InferenceSession(path, sess_options=opts, providers=['CPUExecutionProvider'])
             logger.info(f"ONNX Recognition Model loaded successfully from {path}.")
             self.use_mock_recog = False
         except Exception as e:

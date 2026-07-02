@@ -131,7 +131,7 @@ export default function UsersTab() {
                   <tr key={u.id}>
                     <td>
                       <div className="faculty-id">{u.id}</div>
-                      <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{u.emp_id ? `EMP: ${u.emp_id}` : u.email || ''}</div>
+                      {u.email && <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)" }}>{u.email}</div>}
                     </td>
                     <td className="faculty-name">{u.name}</td>
                     <td>{u.department || "General"}</td>

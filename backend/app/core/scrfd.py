@@ -36,8 +36,12 @@ class SCRFDetector:
         if not os.path.exists(self.model_file):
             raise FileNotFoundError(f"SCRFD model weight file not found at '{self.model_file}'")
             
-        # Initialize ONNX Runtime session
-        self.session = onnxruntime.InferenceSession(self.model_file, providers=['CPUExecutionProvider'])
+        # Initialize ONNX Runtime session with optimized threading settings
+        opts = onnxruntime.SessionOptions()
+        opts.intra_op_num_threads = 4
+        opts.inter_op_num_threads = 4
+        opts.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+        self.session = onnxruntime.InferenceSession(self.model_file, sess_options=opts, providers=['CPUExecutionProvider'])
         self.center_cache = {}
         self._init_vars()
 

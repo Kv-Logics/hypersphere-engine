@@ -130,10 +130,13 @@ async def process_enrollment_files(uploaded_files: List[UploadFile]) -> tuple[np
     raw_norms = []
     all_feedbacks = []
     
+    import asyncio
     for f in uploaded_files:
         try:
             contents = await f.read()
-            _, emb, liveness_val, quality_val, feedback_list, raw_norm_val, _ = face_pipeline.process_image(contents, is_enrollment=True)
+            _, emb, liveness_val, quality_val, feedback_list, raw_norm_val, _ = await asyncio.to_thread(
+                face_pipeline.process_image, contents, is_enrollment=True
+            )
             if feedback_list:
                 all_feedbacks.extend(feedback_list)
                 continue
@@ -362,6 +365,9 @@ async def register_admin(
 @router.post("/verify", response_model=VerifyResponse)
 async def verify_face(
     device_id: str = Form(...),
+    location_name: Optional[str] = Form(None),
+    latitude: Optional[float] = Form(None),
+    longitude: Optional[float] = Form(None),
     file: Optional[UploadFile] = File(None),
     files: Optional[List[UploadFile]] = File(None)
 ):
@@ -386,11 +392,14 @@ async def verify_face(
     all_stage_metrics = []
     all_feedbacks = []
     
+    import asyncio
     # Process each frame in the batch
     for f in uploaded_files:
         try:
             contents = await f.read()
-            _, emb, liveness_val, quality_val, feedback_list, raw_norm_val, stage_metrics_val = face_pipeline.process_image(contents, is_enrollment=False)
+            _, emb, liveness_val, quality_val, feedback_list, raw_norm_val, stage_metrics_val = await asyncio.to_thread(
+                face_pipeline.process_image, contents, is_enrollment=False
+            )
             embeddings.append(emb)
             liveness_scores.append(liveness_val)
             quality_scores.append(quality_val)
@@ -410,7 +419,10 @@ async def verify_face(
             similarity_score=None,
             liveness_score=None,
             quality_score=None,
-            device_id=device_id
+            device_id=device_id,
+            location_name=location_name,
+            latitude=latitude,
+            longitude=longitude
         )
         await database.execute(db_query)
         raise HTTPException(
@@ -543,7 +555,10 @@ async def verify_face(
         quality_score=quality_score,
         device_id=device_id,
         detector_confidence=det_conf,
-        model_version="arcface_w600k_r50_v1"
+        model_version="arcface_w600k_r50_v1",
+        location_name=location_name,
+        latitude=latitude,
+        longitude=longitude
     )
     await database.execute(db_query)
 
