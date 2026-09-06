@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     
     # Database Settings
     DATABASE_URL: str = Field(
-        default="sqlite:///./face_attendance.db",
-        description="SQL Database connection string (defaults to SQLite, use postgresql:// for production)"
+        default="postgresql+asyncpg://postgres:password@localhost:5432/face_attendance",
+        description="SQL Database connection string (PostgreSQL + pgvector required)"
     )
     
     # Vector DB Index Path

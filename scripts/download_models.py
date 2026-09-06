@@ -31,7 +31,7 @@ def main():
     for filename, url in models.items():
         dest_path = os.path.join("models", filename)
         if os.path.exists(dest_path) and os.path.getsize(dest_path) > 1024 * 1024:
-            print(f"✓ {dest_path} already exists and looks valid. Skipping download.")
+            print(f"[OK] {dest_path} already exists and looks valid. Skipping download.")
             continue
 
         print(f"Downloading {dest_path}...")
@@ -42,9 +42,9 @@ def main():
             urllib.request.install_opener(opener)
             
             urllib.request.urlretrieve(url, dest_path, download_progress)
-            print(f"\n✓ Successfully downloaded {dest_path}!")
+            print(f"\n[OK] Successfully downloaded {dest_path}!")
         except Exception as e:
-            print(f"\n✗ Failed to download {dest_path}: {e}")
+            print(f"\n[FAIL] Failed to download {dest_path}: {e}")
             if os.path.exists(dest_path):
                 os.remove(dest_path)
 
