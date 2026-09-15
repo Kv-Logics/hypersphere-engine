@@ -21,8 +21,16 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hypersphere Control Plane",
-  description: "Biometric AI System Dashboard",
+  title: "Hypersphere Control Plane · Amrita Vishwa Vidyapeetham",
+  description: "Biometric AI System Dashboard & Spatial Geofence Verification",
+  icons: {
+    icon: [
+      { url: "/amrita-favicon.png", type: "image/png" },
+      { url: "/favicon.ico" }
+    ],
+    apple: "/amrita-favicon.png",
+    shortcut: "/amrita-favicon.png",
+  },
 };
 
 export default function RootLayout({
@@ -31,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <body className={`${roboto.variable} ${outfit.variable} ${jetbrainsMono.variable} font-sans`}>
         {children}
       </body>

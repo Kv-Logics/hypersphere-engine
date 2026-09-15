@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeoLocator Pro - Modern Spatial Pinning & Geolocation Tool</title>
+  <meta name="description" content="A premium location intelligence utility to detect device coordinates, search addresses, parse coordinate formats, calculate distances, and pin locations globally." />
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <style>
+    /* ── DESIGN SYSTEM & CSS VARIABLES ──────────────── */
+    :root {
+      --bg-dark: #070a13;
+      --bg-card: rgba(15, 22, 42, 0.75);
+      --bg-card-hover: rgba(22, 33, 62, 0.85);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-color-focus: rgba(99, 102, 241, 0.4);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-darker: #475569;
+      
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-glow: rgba(99, 102, 241, 0.25);
+      
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      
+      --accent: #f43f5e;
+      --accent-glow: rgba(244, 63, 94, 0.25);
+      
+      --warning: #f59e0b;
+      
+      --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ── BASE STYLES ───────────────────────────────── */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+    }
+
+    #app-container {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+      position: relative;
+    }
+
+    /* ── SIDEBAR ───────────────────────────────────── */
+    #sidebar {
+      width: 380px;
+      flex-shrink: 0;
+      background: linear-gradient(180deg, #090d1a 0%, #060810 100%);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      overflow: hidden;
+      box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Header styling */
+    .sidebar-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border-color);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(7, 10, 19, 0) 100%);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .brand-logo {
+      background: linear-gradient(135deg, var(--primary) 0%, #a855f7 100%);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .brand-logo svg {
+      width: 18px;
+      height: 18px;
+      fill: #fff;
+    }
+
+    .brand h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #fff, #c7d2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .sidebar-header p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Scrollable content */
+    .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .sidebar-content::-webkit-scrollbar {
+      width: 5px;
+    }
+    .sidebar-content::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
+
+    /* ── CARD LAYOUTS ──────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 16px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: var(--transition);
+    }
+
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title svg {
+      width: 14px;
+      height: 14px;
+      fill: var(--text-muted);
+    }
+
+    /* ── GEOLOCATION CONTROLS ──────────────────────── */
+    .geo-btn {
+      width: 100%;
+      background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: var(--transition);
+      box-shadow: 0 4px 15px var(--primary-glow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .geo-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+    }
+
+    .geo-btn:active {
+      transform: translateY(1px);
+    }
+
+    .geo-btn .pulse-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+      border: 2px solid var(--primary);
+      animation: ripple 2s infinite;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @keyframes ripple {
+      0% { transform: scale(0.95); opacity: 0.5; }
+      100% { transform: scale(1.15); opacity: 0; }
+    }
+
+    .btn-tracking-active {
+      background: rgba(16, 185, 129, 0.12) !important;
+      border-color: var(--success) !important;
+      color: var(--success) !important;
+      box-shadow: 0 0 12px var(--success-glow) !important;
+    }
+    
+    .tracking-pulse-dot {
+      background-color: var(--success) !important;
+      box-shadow: 0 0 8px var(--success) !important;
+      animation: pulseGreen 1.5s infinite;
+    }
+    
+    @keyframes pulseGreen {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* ── INPUT FIELDS ──────────────────────────────── */
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .input-wrapper label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .input-field {
+      width: 100%;
+      background-color: rgba(7, 10, 19, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.85rem;
+      transition: var(--transition);
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    .paste-box-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .paste-box-wrapper label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .paste-input {
+      width: 100%;
+      background-color: rgba(7, 10, 19, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.82rem;
+      transition: var(--transition);
+    }
+
+    .paste-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--text-muted);
+    }
+
+    .btn-primary-action {
+      background: var(--primary);
+      border: 1px solid var(--primary);
+      color: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-primary-action:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    /* ── INFORMATION LAYOUT ────────────────────────── */
+    #info-card {
+      display: none; /* Show only when a location is active */
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .info-tile {
+      background: rgba(7, 10, 19, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+
+    .info-tile-label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .info-tile-value {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #fff;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .address-wrapper {
+      margin-top: 10px;
+      padding: 10px;
+      background: rgba(7, 10, 19, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: 8px;
+    }
+
+    .address-label {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .address-value {
+      font-size: 0.78rem;
+      line-height: 1.4;
+      color: #e2e8f0;
+    }
+
+    .distance-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: var(--success);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    .distance-badge svg {
+      width: 14px;
+      height: 14px;
+      fill: var(--success);
+    }
+
+    .action-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .action-row button {
+      flex: 1;
+      padding: 8px;
+      font-size: 0.78rem;
+    }
+
+    /* ── HISTORY / SAVED LOCATIONS ─────────────────── */
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .history-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    .history-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+    }
+
+    .history-item {
+      background: rgba(7, 10, 19, 0.3);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .history-item:hover {
+      background: rgba(7, 10, 19, 0.5);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .history-item-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .history-item-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .history-item-coords {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .history-item-delete {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+
+    .history-item-delete:hover {
+      background: rgba(244, 63, 94, 0.15);
+    }
+
+    .history-item-delete svg {
+      width: 14px;
+      height: 14px;
+      fill: var(--text-muted);
+      transition: var(--transition);
+    }
+
+    .history-item-delete:hover svg {
+      fill: var(--accent);
+    }
+
+    .empty-state {
+      font-size: 0.75rem;
+      color: var(--text-darker);
+      text-align: center;
+      padding: 12px;
+      border: 1px dashed var(--border-color);
+      border-radius: 8px;
+    }
+
+    /* ── MAP CONTAINER ─────────────────────────────── */
+    #map-wrapper {
+      flex: 1;
+      position: relative;
+      height: 100%;
+      background: #090d16;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Custom Leaflet Dark styling */
+    .leaflet-container {
+      background: #090d16 !important;
+    }
+
+    /* ── FLOATING SEARCH BOX ────────────────────────── */
+    #search-box {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 1100;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      filter: drop-shadow(0 10px 25px rgba(0, 0, 0, 0.4));
+    }
+
+    .search-input-wrapper {
+      display: flex;
+      align-items: center;
+      background: rgba(11, 17, 33, 0.9);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 4px 10px;
+      backdrop-filter: blur(12px);
+      transition: var(--transition);
+    }
+
+    .search-input-wrapper:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    .search-input-wrapper svg {
+      width: 16px;
+      height: 16px;
+      fill: var(--text-muted);
+      margin-right: 8px;
+    }
+
+    #search-input {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #fff;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.85rem;
+      padding: 8px 4px;
+    }
+
+    #search-input:focus {
+      outline: none;
+    }
+
+    .search-clear {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      display: none;
+    }
+
+    .search-results {
+      background: rgba(11, 17, 33, 0.95);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      margin-top: 6px;
+      max-height: 250px;
+      overflow-y: auto;
+      display: none;
+      backdrop-filter: blur(12px);
+    }
+
+    .search-results::-webkit-scrollbar {
+      width: 4px;
+    }
+    .search-results::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+
+    .search-item {
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      transition: var(--transition);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .search-item:hover {
+      background: rgba(99, 102, 241, 0.12);
+      color: #fff;
+    }
+
+    .search-item:last-child {
+      border-bottom: none;
+    }
+
+    /* ── MAP OVERLAYS ──────────────────────────────── */
+    .map-badge {
+      position: absolute;
+      bottom: 24px;
+      left: 20px;
+      z-index: 1100;
+      background: rgba(11, 17, 33, 0.85);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px 12px;
+      backdrop-filter: blur(8px);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .map-badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    /* ── TOAST MESSAGES ────────────────────────────── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--border-color);
+      border-left: 4px solid var(--primary);
+      border-radius: 8px;
+      padding: 12px 18px;
+      color: #fff;
+      font-size: 0.8rem;
+      min-width: 250px;
+      max-width: 350px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transform: translateY(20px);
+      opacity: 0;
+      animation: toastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      pointer-events: auto;
+    }
+
+    @keyframes toastIn {
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .toast.success { border-left-color: var(--success); }
+    .toast.error { border-left-color: var(--accent); }
+    .toast.warning { border-left-color: var(--warning); }
+
+    .toast-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+    }
+
+    /* ── CUSTOM MAP MARKERS ───────────────────────── */
+    .pulse-marker {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 3px solid #fff;
+      box-shadow: 0 0 12px rgba(244, 63, 94, 0.6);
+      position: relative;
+    }
+
+    .pulse-marker::after {
+      content: '';
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 3px solid var(--accent);
+      opacity: 0;
+      animation: pulseGlow 1.8s infinite ease-out;
+    }
+
+    @keyframes pulseGlow {
+      0% { transform: scale(0.6); opacity: 0.8; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+
+    .device-marker {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2.5px solid #fff;
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.7);
+      position: relative;
+    }
+
+    .device-marker::after {
+      content: '';
+      position: absolute;
+      top: -8px;
+      left: -8px;
+      width: 27px;
+      height: 27px;
+      border-radius: 50%;
+      border: 2.5px solid var(--primary);
+      opacity: 0;
+      animation: pulseGlow 2s infinite ease-out;
+    }
+
+    /* ── POPUP CUSTOMIZATION ───────────────────────── */
+    .leaflet-popup-content-wrapper {
+      background: #0f172a !important;
+      border: 1px solid var(--border-color) !important;
+      border-radius: 10px !important;
+      color: #fff !important;
+      font-family: 'Plus Jakarta Sans', sans-serif !important;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    .leaflet-popup-tip {
+      background: #0f172a !important;
+      border: 1px solid var(--border-color) !important;
+    }
+
+    .popup-title {
+      font-weight: 700;
+      color: #fff;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+    }
+
+    .popup-coords {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    .context-warning {
+      background: rgba(244, 63, 94, 0.12);
+      border: 1px solid rgba(244, 63, 94, 0.25);
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 14px;
+      font-size: 0.72rem;
+      color: #fb7185;
+      line-height: 1.4;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    
+    .context-warning svg {
+      width: 16px;
+      height: 16px;
+      fill: #fb7185;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    
+    .context-warning code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-family: monospace;
+      color: #fff;
+    }
+
+    /* ── Amrita GEOFENCE HUD & HIGHLIGHTS ─────────────── */
+    #geofence-hud {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 14px 18px;
+      width: 240px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      transition: var(--transition);
+      pointer-events: none;
+    }
+
+    .hud-status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .hud-status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-off {
+      background-color: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+    }
+
+    .status-grounds {
+      background-color: #f59e0b;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+    }
+
+    .status-inside {
+      background-color: #10b981;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.7);
+    }
+
+    .hud-status-text {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .hud-building-name {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .hud-details {
+      font-size: 0.7rem;
+      color: var(--text-darker);
+      line-height: 1.3;
+    }
+
+    @keyframes pulseActiveBuilding {
+      0% { fill-opacity: 0.22; stroke-opacity: 0.85; }
+      50% { fill-opacity: 0.45; stroke-opacity: 1; }
+      100% { fill-opacity: 0.22; stroke-opacity: 0.85; }
+    }
+    .active-building-highlight {
+      animation: pulseActiveBuilding 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-container">
+
+    <!-- LEFT SIDEBAR -->
+    <div id="sidebar">
+      
+      <!-- Brand & Description -->
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-logo">
+            <!-- Icon: Location compass/target -->
+            <svg viewBox="0 0 24 24">
+              <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8Z"/>
+            </svg>
+          </div>
+          <h1>GeoLocator Pro</h1>
+        </div>
+        <p>Advanced mapping, location lookup, and spatial pinning utility</p>
+      </div>
+
+      <!-- Controls & Forms -->
+      <div class="sidebar-content">
+
+        <!-- Geolocation trigger card -->
+        <div class="card">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24"><path d="M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"/></svg>
+            Device Location Sensor
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="geo-btn" id="btn-detect-location">
+              <span class="pulse-ring"></span>
+              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+                <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1c0-.55-.45-1-1-1s-1 .45-1 1v2.06C6.83 3.52 3.52 6.83 3.06 11H1c-.55 0-1 .45-1 1s.45 1 1 1h2.06c.46 4.17 3.77 7.48 7.94 7.94V23c0 .55.45 1 1 1s1-.45 1-1v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23c.55 0 1-.45 1-1s-.45-1-1-1h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+              </svg>
+              Get Current Location
+            </button>
+            <button class="btn-secondary" id="btn-track-location" style="background: rgba(99, 102, 241, 0.05); border-color: rgba(99, 102, 241, 0.2); width: 100%;">
+              <span id="track-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-darker); margin-right: 6px; display: inline-block;"></span>
+              <span id="btn-track-text">Start GPS Live Tracking</span>
+            </button>
+            <div id="tracking-options" style="display: none; align-items: center; justify-content: space-between; margin-top: 4px; font-size: 0.72rem; color: var(--text-muted);">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="checkbox" id="chk-follow-device" checked style="accent-color: var(--primary);" /> Keep Map Centered
+              </label>
+              <span id="gps-accuracy-info" style="font-family: 'Outfit', sans-serif; color: var(--success);">Acc: ±0m</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Coordinates Input Card -->
+        <div class="card">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            Coordinate Entry
+          </div>
+          
+          <div class="input-group">
+            <div class="input-row">
+              <div class="input-wrapper">
+                <label for="input-lat">Latitude</label>
+                <input type="number" id="input-lat" step="any" placeholder="e.g. 10.7634" class="input-field" />
+              </div>
+              <div class="input-wrapper">
+                <label for="input-lon">Longitude</label>
+                <input type="number" id="input-lon" step="any" placeholder="e.g. 78.8155" class="input-field" />
+              </div>
+            </div>
+
+            <div style="text-align: center; font-size: 0.7rem; color: var(--text-darker); margin: 2px 0;">— OR —</div>
+
+            <div class="paste-box-wrapper">
+              <label for="input-paste">Quick Paste Coordinates</label>
+              <input type="text" id="input-paste" placeholder="Paste: 10.9036, 76.9003" class="paste-input" />
+            </div>
+
+            <button class="btn-primary-action" id="btn-pin-coords">
+              <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
+              </svg>
+              Plot & Pin Location
+            </button>
+          </div>
+        </div>
+
+        <!-- Pin info card (displays coordinate properties) -->
+        <div class="card" id="info-card">
+          <div class="card-title" style="color: var(--warning);">
+            <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            Pinned Location Info
+          </div>
+
+          <div class="info-grid">
+            <div class="info-tile">
+              <div class="info-tile-label">Latitude</div>
+              <div class="info-tile-value" id="val-lat">—</div>
+            </div>
+            <div class="info-tile">
+              <div class="info-tile-label">Longitude</div>
+              <div class="info-tile-value" id="val-lon">—</div>
+            </div>
+            <div class="info-tile" style="grid-column: span 2;">
+              <div class="info-tile-label">DMS Notation</div>
+              <div class="info-tile-value" id="val-dms">—</div>
+            </div>
+          </div>
+
+          <div class="address-wrapper">
+            <div class="address-label">Approximate Address</div>
+            <div class="address-value" id="val-address">Click on the map or enter coords to reverse-geocode...</div>
+          </div>
+
+          <div class="distance-badge" id="val-distance-box" style="display: none;">
+            <svg viewBox="0 0 24 24"><path d="M22.41 11.59l-8.59-8.59c-.77-.77-2.03-.77-2.8 0l-8.59 8.59c-.78.78-.78 2.03 0 2.8l8.59 8.59c.78.78 2.03.78 2.8 0l8.59-8.59c.78-.78.78-2.03 0-2.8zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg>
+            <span id="val-distance">0.00 km from device</span>
+          </div>
+
+          <div class="action-row">
+            <button class="btn-secondary" id="btn-copy-coords">
+              <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+              </svg>
+              Copy
+            </button>
+            <button class="btn-primary-action" id="btn-save-location" style="background: var(--success); border-color: var(--success);">
+              <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+              </svg>
+              Save Pin
+            </button>
+          </div>
+        </div>
+
+        <!-- Saved Pins List -->
+        <div class="card">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24"><path d="M13.5 8H12v5l4.28 2.54.72-1.21-3.5-2.08V8M13 3c-4.97 0-9 4.03-9 9H1l3.89 4 4.11-4H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9z"/></svg>
+            Saved Pin Log
+          </div>
+          <div class="history-list" id="history-container">
+            <div class="empty-state">No saved locations yet</div>
+          </div>
+          <div id="export-actions" style="margin-top: 10px; display: none;">
+            <button class="btn-secondary" id="btn-export-geojson" style="width: 100%; font-size: 0.78rem;">
+              <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24" style="margin-right: 4px;">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+              </svg>
+              Export Pins as GeoJSON
+            </button>
+          </div>
+        </div>
+
+        <!-- Amrita Buildings Directory Card -->
+        <div class="card">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24"><path d="M12 3L1 9l11 6 9-4.91V17h2V9L12 3zM5.47 12.5L12 16l6.53-3.5L12 9 5.47 12.5z"/></svg>
+            Amrita Buildings Directory
+          </div>
+          <div style="margin-bottom: 8px;">
+            <input type="text" id="nitt-search-input" placeholder="Search campus buildings (e.g. Agate, Mess)..." class="paste-input" style="padding: 8px 12px; font-size: 0.78rem;" />
+          </div>
+          <div class="history-list" id="nitt-buildings-container" style="max-height: 180px; overflow-y: auto;">
+            <div class="empty-state">Loading campus buildings...</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- MAP CONTAINER -->
+    <div id="map-wrapper">
+      
+      <!-- Floating Geofence HUD -->
+      <div id="geofence-hud">
+        <div class="hud-status-row">
+          <span class="hud-status-dot status-off"></span>
+          <span class="hud-status-text">Geofence Resolver</span>
+        </div>
+        <div class="hud-building-name">Off Campus</div>
+        <div class="hud-details">No location resolved. Click the map or start GPS.</div>
+      </div>
+      
+      <!-- Floating Search Box on Map -->
+      <div id="search-box">
+        <div class="search-input-wrapper">
+          <svg viewBox="0 0 24 24">
+            <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+          </svg>
+          <input type="text" id="search-input" placeholder="Search address, city, country..." autocomplete="off" />
+          <button class="search-clear" id="btn-search-clear">✕</button>
+        </div>
+        <div class="search-results" id="search-results-box"></div>
+      </div>
+
+      <!-- Leaflet Map -->
+      <div id="map"></div>
+
+      <!-- Bottom Overlay Badge -->
+      <div class="map-badge">
+        <div class="map-badge-dot"></div>
+        <span>Map active · Click map to drop pin instantly</span>
+      </div>
+
+    </div>
+
+    <!-- TOAST POPUPS CONTAINER -->
+    <div id="toast-container"></div>
+
+  </div>
+
+  <!-- Leaflet Javascript -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // ══════════════════════════════════════════════════════
+    // STATE & VARIABLES
+    // ══════════════════════════════════════════════════════
+    let map;
+    let activePin = null;         // Leaflet marker for the active pin
+    let devicePin = null;         // Leaflet marker for the detected device location
+    let deviceCoords = null;      // { lat, lon }
+    let activeCoords = null;      // { lat, lon }
+    let savedPins = [];           // Array of saved pins from localStorage
+    let watchId = null;           // GPS watchPosition ID
+
+    // Amrita Campus Geofence State
+    let campusBoundary = null;      // Leaflet layer for campus boundary
+    let campusBuildings = [];       // Array of building features/layers
+    let boundaryGeometry = null;    // The raw geometry of the campus boundary
+    let highlightedLayer = null;    // Reference to the currently highlighted building layer
+    let buildingLayers = L.layerGroup(); // Leaflet layer group for all buildings
+
+    // Tile layers definitions
+    let baseLayers = {};
+
+    // ══════════════════════════════════════════════════════
+    // INITIALIZATION & MAP SETUP
+    // ══════════════════════════════════════════════════════
+    function initMap() {
+      // Default viewpoint centers on a global overview or falls back to Amrita Vishwa Vidyapeetham (default project hub)
+      const defaultCenter = [10.9036, 76.9003]; // Amrita Vishwa Vidyapeetham
+      const defaultZoom = 13;
+
+      map = L.map('map', {
+        zoomControl: false,
+        minZoom: 2,
+        maxZoom: 21
+      }).setView(defaultCenter, defaultZoom);
+
+      // Add Zoom control at the bottom right
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+      // 1. CartoDB Dark Matter (Primary theme)
+      const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 20
+      }).addTo(map);
+
+      // 2. OpenStreetMap Standard
+      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      });
+
+      // 3. Esri World Imagery (Satellite)
+      const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+        maxZoom: 20
+      });
+
+      baseLayers = {
+        "Dark Theme": darkLayer,
+        "Satellite Imagery": satelliteLayer,
+        "OpenStreetMap": osmLayer
+      };
+
+      // Add Layer Selection control at the bottom right
+      L.control.layers(baseLayers, null, { position: 'bottomright', collapsed: true }).addTo(map);
+
+      // Click event on map to place pin
+      map.on('click', function(e) {
+        updateActivePin(e.latlng.lat, e.latlng.lng, "Map Click");
+      });
+
+      // Load Amrita campus boundary and building geofences
+      loadCampusGeofences();
+
+      // Trigger automatic Geolocation request on load
+      requestDeviceLocation(true);
+    }
+
+    // ══════════════════════════════════════════════════════
+    // GEOLOCATION ENGINE
+    // ══════════════════════════════════════════════════════
+    function requestDeviceLocation(onStartup = false) {
+      const btn = document.getElementById('btn-detect-location');
+      btn.disabled = true;
+      btn.querySelector('.pulse-ring').style.animation = 'ripple 1.5s infinite';
+      
+      showToast("Requesting device geolocation...", "info");
+
+      if (!navigator.geolocation) {
+        if (!window.isSecureContext) {
+          showToast("Geolocation blocked: Connection is not secure (requires HTTPS or localhost).", "error");
+        } else {
+          showToast("Geolocation is not supported by your browser.", "error");
+        }
+        btn.disabled = false;
+        return;
+      }
+
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      };
+
+      // Stop live tracking if active to prevent overlapping requests
+      if (watchId !== null) {
+        toggleGPSTracking();
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        // Success
+        (position) => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
+
+          if (accuracy > 100) {
+            showToast("Waiting for GPS... (Accuracy: " + Math.round(accuracy) + "m). Signal too weak.", "warning");
+            btn.disabled = false;
+            return;
+          }
+
+          deviceCoords = { lat, lon };
+
+          // Place device pin
+          if (devicePin) {
+            devicePin.setLatLng([lat, lon]);
+          } else {
+            const deviceIcon = L.divIcon({
+              className: '',
+              html: `<div class="device-marker"></div>`,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            });
+            devicePin = L.marker([lat, lon], { icon: deviceIcon })
+              .addTo(map)
+              .bindPopup("<div class='popup-title'>Your Device</div><div class='popup-coords'>Lat: " + lat.toFixed(5) + "<br>Lon: " + lon.toFixed(5) + "</div>");
+          }
+
+          // If on startup, let's fly to device and also set the first active pin there
+          if (onStartup) {
+            map.setView([lat, lon], 15);
+            updateActivePin(lat, lon, "My Location");
+          } else {
+            // Otherwise just center or fly to device
+            map.flyTo([lat, lon], 16);
+            updateActivePin(lat, lon, "My Location");
+            showToast("Successfully located device (±" + Math.round(accuracy) + "m)", "success");
+          }
+
+          btn.disabled = false;
+        },
+        // Error
+        (error) => {
+          btn.disabled = false;
+          let errMsg = "Unable to retrieve your location.";
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              errMsg = "Location request denied by user.";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errMsg = "Location information is unavailable.";
+              break;
+            case error.TIMEOUT:
+              errMsg = "Location request timed out.";
+              break;
+          }
+          showToast(errMsg, "warning");
+          console.warn("Geolocation warning: " + errMsg, error);
+        },
+        options
+      );
+    }
+
+    // Toggle continuous GPS sensor tracking (watchPosition)
+    function toggleGPSTracking() {
+      const btn = document.getElementById('btn-track-location');
+      const btnText = document.getElementById('btn-track-text');
+      const dot = document.getElementById('track-status-dot');
+      const optionsDiv = document.getElementById('tracking-options');
+      const accuracyInfo = document.getElementById('gps-accuracy-info');
+
+      if (watchId !== null) {
+        // Stop tracking
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        
+        btn.classList.remove('btn-tracking-active');
+        dot.classList.remove('tracking-pulse-dot');
+        dot.style.backgroundColor = 'var(--text-darker)';
+        btnText.textContent = "Start GPS Live Tracking";
+        optionsDiv.style.display = 'none';
+        
+        showToast("GPS Live Tracking stopped.", "info");
+      } else {
+        // Start tracking
+        if (!navigator.geolocation) {
+          if (!window.isSecureContext) {
+            showToast("Geolocation blocked: Connection is not secure (requires HTTPS or localhost).", "error");
+          } else {
+            showToast("Geolocation is not supported by your browser.", "error");
+          }
+          return;
+        }
+
+        showToast("Connecting to GPS sensor...", "info");
+
+        const options = {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        };
+
+        watchId = navigator.geolocation.watchPosition(
+          // Success
+          (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            if (accuracy > 100) {
+              showToast("Waiting for GPS... (Accuracy: " + Math.round(accuracy) + "m). Signal too weak.", "warning");
+              return;
+            }
+
+            deviceCoords = { lat, lon };
+            accuracyInfo.textContent = `Acc: ±${Math.round(accuracy)}m`;
+
+            // Draw or update device location marker
+            if (devicePin) {
+              devicePin.setLatLng([lat, lon]);
+            } else {
+              const deviceIcon = L.divIcon({
+                className: '',
+                html: `<div class="device-marker"></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+              });
+              devicePin = L.marker([lat, lon], { icon: deviceIcon })
+                .addTo(map)
+                .bindPopup("<div class='popup-title'>Your Device</div><div class='popup-coords'>Lat: " + lat.toFixed(5) + "<br>Lon: " + lon.toFixed(5) + "</div>");
+            }
+
+            // Follow device on map if follow toggle is checked
+            if (document.getElementById('chk-follow-device').checked) {
+              map.setView([lat, lon], map.getZoom() > 15 ? map.getZoom() : 16);
+            }
+
+            // Update distance calculation relative to new live GPS coordinates
+            if (activeCoords) {
+              const dist = calculateHaversineDistance(lat, lon, activeCoords.lat, activeCoords.lon);
+              const distanceBox = document.getElementById('val-distance-box');
+              document.getElementById('val-distance').textContent = dist.toFixed(2) + " km from your device";
+              distanceBox.style.display = 'inline-flex';
+            }
+
+            // Run Amrita campus geofencing engine
+            resolveLocationGeofence(lat, lon);
+          },
+          // Error
+          (error) => {
+            let errMsg = "GPS sensor tracking error.";
+            switch(error.code) {
+              case error.PERMISSION_DENIED:
+                errMsg = "Location permission denied.";
+                break;
+              case error.POSITION_UNAVAILABLE:
+                errMsg = "Location data unavailable.";
+                break;
+              case error.TIMEOUT:
+                errMsg = "GPS sensor request timed out.";
+                break;
+            }
+            showToast(errMsg, "error");
+            console.warn("GPS watch position warning: ", error);
+          },
+          options
+        );
+
+        btn.classList.add('btn-tracking-active');
+        dot.classList.add('tracking-pulse-dot');
+        btnText.textContent = "Tracking GPS Live...";
+        optionsDiv.style.display = 'flex';
+      }
+    }
+
+    // ══════════════════════════════════════════════════════
+    // COORDINATE UPDATING & PINNING
+    // ══════════════════════════════════════════════════════
+    function updateActivePin(lat, lon, sourceName = "Dropped Pin") {
+      lat = parseFloat(lat);
+      lon = parseFloat(lon);
+
+      if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        showToast("Invalid coordinate ranges: Lat [-90, 90], Lon [-180, 180]", "error");
+        return;
+      }
+
+      activeCoords = { lat, lon };
+
+      // Update manual text inputs
+      document.getElementById('input-lat').value = lat.toFixed(6);
+      document.getElementById('input-lon').value = lon.toFixed(6);
+      document.getElementById('input-paste').value = lat.toFixed(6) + ", " + lon.toFixed(6);
+
+      // Render custom pulsing pin on Leaflet
+      if (activePin) {
+        activePin.setLatLng([lat, lon]);
+      } else {
+        const pinIcon = L.divIcon({
+          className: '',
+          html: `<div class="pulse-marker"></div>`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+        activePin = L.marker([lat, lon], { icon: pinIcon, draggable: true }).addTo(map);
+        
+        // Listen to marker drag events to dynamically update coordinates
+        activePin.on('dragend', function(e) {
+          const newPos = activePin.getLatLng();
+          updateActivePin(newPos.lat, newPos.lng, "Dragged Pin");
+        });
+      }
+
+      // Bind popups
+      activePin.bindPopup(`
+        <div class="popup-title">${sourceName}</div>
+        <div class="popup-coords">
+          Lat: ${lat.toFixed(6)}<br>
+          Lon: ${lon.toFixed(6)}
+        </div>
+      `).openPopup();
+
+      // Show Info Card
+      document.getElementById('info-card').style.display = 'block';
+      document.getElementById('val-lat').textContent = lat.toFixed(6) + "°";
+      document.getElementById('val-lon').textContent = lon.toFixed(6) + "°";
+      document.getElementById('val-dms').textContent = convertToDMS(lat, lon);
+
+      // Calculate distance if device location is active
+      const distanceBox = document.getElementById('val-distance-box');
+      if (deviceCoords) {
+        const dist = calculateHaversineDistance(deviceCoords.lat, deviceCoords.lon, lat, lon);
+        document.getElementById('val-distance').textContent = dist.toFixed(2) + " km from your device";
+        distanceBox.style.display = 'inline-flex';
+      } else {
+        distanceBox.style.display = 'none';
+      }
+
+      // Query reverse geocoding address
+      fetchAddress(lat, lon);
+
+      // Run Amrita campus geofencing engine
+      resolveLocationGeofence(lat, lon);
+    }
+
+    // Convert decimal degrees to Degrees Minutes Seconds (DMS)
+    function convertToDMS(lat, lon) {
+      function getDMS(val, direction) {
+        const absolute = Math.abs(val);
+        const degrees = Math.floor(absolute);
+        const minutesNotTruncated = (absolute - degrees) * 60;
+        const minutes = Math.floor(minutesNotTruncated);
+        const seconds = Math.round((minutesNotTruncated - minutes) * 60);
+        return degrees + "°" + minutes + "'" + seconds + '"' + direction;
+      }
+      const latDir = lat >= 0 ? "N" : "S";
+      const lonDir = lon >= 0 ? "E" : "W";
+      return getDMS(lat, latDir) + ", " + getDMS(lon, lonDir);
+    }
+
+    // Haversine formula to compute great-circle distance
+    function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Earth's radius in kilometers
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // ══════════════════════════════════════════════════════
+    // NOMINATIM REVERSE GEOCODING API
+    // ══════════════════════════════════════════════════════
+    let activeReverseGeocodeController = null;
+    function fetchAddress(lat, lon) {
+      const addressVal = document.getElementById('val-address');
+      addressVal.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">Resolving address...</span>`;
+
+      // Cancel previous pending geocoding request if active
+      if (activeReverseGeocodeController) {
+        activeReverseGeocodeController.abort();
+      }
+      activeReverseGeocodeController = new AbortController();
+
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+
+      fetch(url, { signal: activeReverseGeocodeController.signal })
+        .then(response => response.json())
+        .then(data => {
+          if (data && data.display_name) {
+            addressVal.textContent = data.display_name;
+            if (activePin) {
+              activePin.setPopupContent(`
+                <div class="popup-title">${data.name || "Pinned Location"}</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.3; max-width: 220px; margin-bottom: 6px;">${data.display_name.split(',').slice(0, 3).join(',')}</div>
+                <div class="popup-coords">Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}</div>
+              `);
+            }
+          } else {
+            addressVal.textContent = "Address could not be resolved.";
+          }
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') return; // ignored
+          console.error("Geocoding fetch error:", err);
+          addressVal.textContent = "Error loading address from Nominatim.";
+        });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // COORDINATE INPUT PARSING & SUBMIT
+    // ══════════════════════════════════════════════════════
+    function handlePinFromInputs() {
+      const latVal = document.getElementById('input-lat').value;
+      const lonVal = document.getElementById('input-lon').value;
+
+      if (latVal && lonVal) {
+        const lat = parseFloat(latVal);
+        const lon = parseFloat(lonVal);
+        updateActivePin(lat, lon, "Manual Pin");
+        map.flyTo([lat, lon], 16);
+      } else {
+        showToast("Please enter both latitude and longitude.", "warning");
+      }
+    }
+
+    // Parse coordinates pasted as a text block
+    function parsePasteInput() {
+      const val = document.getElementById('input-paste').value.trim();
+      if (!val) return;
+
+      // Regex matching latitude, longitude pairs (both integer/floats)
+      // Supports formats like: "12.345, 67.890", "12.345 67.890", "lat: 12.34 lon: 67.89"
+      const match = val.match(/([-+]?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*([-+]?\d{1,3}(?:\.\d+)?)/);
+      if (match) {
+        const lat = parseFloat(match[1]);
+        const lon = parseFloat(match[2]);
+        
+        document.getElementById('input-lat').value = lat;
+        document.getElementById('input-lon').value = lon;
+        
+        updateActivePin(lat, lon, "Pasted Coordinates");
+        map.flyTo([lat, lon], 16);
+        showToast("Parsed coords: " + lat.toFixed(5) + ", " + lon.toFixed(5), "success");
+      } else {
+        showToast("Unable to parse. Format should be: 'lat, lon'", "warning");
+      }
+    }
+
+    // ══════════════════════════════════════════════════════
+    // NOMINATIM SEARCH AUTOCOMPLETE
+    // ══════════════════════════════════════════════════════
+    let searchDebounceTimeout = null;
+    const searchInput = document.getElementById('search-input');
+    const searchResultsBox = document.getElementById('search-results-box');
+    const clearBtn = document.getElementById('btn-search-clear');
+
+    searchInput.addEventListener('input', function() {
+      const query = searchInput.value.trim();
+      clearBtn.style.display = query ? 'block' : 'none';
+
+      if (searchDebounceTimeout) clearTimeout(searchDebounceTimeout);
+
+      if (query.length < 3) {
+        searchResultsBox.style.display = 'none';
+        return;
+      }
+
+      searchDebounceTimeout = setTimeout(() => {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`;
+
+        fetch(url)
+          .then(res => res.json())
+          .then(data => {
+            searchResultsBox.innerHTML = '';
+            if (data && data.length > 0) {
+              data.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'search-item';
+                row.textContent = item.display_name;
+                row.addEventListener('click', () => {
+                  const lat = parseFloat(item.lat);
+                  const lon = parseFloat(item.lon);
+                  
+                  searchResultsBox.style.display = 'none';
+                  searchInput.value = item.display_name;
+                  
+                  updateActivePin(lat, lon, item.name || "Search Result");
+                  map.flyTo([lat, lon], 16);
+                });
+                searchResultsBox.appendChild(row);
+              });
+              searchResultsBox.style.display = 'block';
+            } else {
+              searchResultsBox.innerHTML = '<div style="padding: 10px; font-size: 0.75rem; color: var(--text-darker);">No results found</div>';
+              searchResultsBox.style.display = 'block';
+            }
+          })
+          .catch(err => {
+            console.error("Search fetch error:", err);
+          });
+      }, 400); // 400ms debounce
+    });
+
+    clearBtn.addEventListener('click', function() {
+      searchInput.value = '';
+      clearBtn.style.display = 'none';
+      searchResultsBox.style.display = 'none';
+      searchInput.focus();
+    });
+
+    // Close search results when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!document.getElementById('search-box').contains(e.target)) {
+        searchResultsBox.style.display = 'none';
+      }
+    });
+
+    // ══════════════════════════════════════════════════════
+    // PERSISTENT PIN LOG (LOCAL STORAGE)
+    // ══════════════════════════════════════════════════════
+    function loadSavedPins() {
+      try {
+        const raw = localStorage.getItem('geolocator_saved_pins');
+        savedPins = raw ? JSON.parse(raw) : [];
+      } catch(e) {
+        console.error("Error loading pins from localStorage", e);
+        savedPins = [];
+      }
+      renderSavedPinsList();
+    }
+
+    function renderSavedPinsList() {
+      const container = document.getElementById('history-container');
+      const exportBox = document.getElementById('export-actions');
+      container.innerHTML = '';
+
+      if (savedPins.length === 0) {
+        container.innerHTML = '<div class="empty-state">No saved locations yet</div>';
+        exportBox.style.display = 'none';
+        return;
+      }
+
+      exportBox.style.display = 'block';
+
+      savedPins.forEach((pin, index) => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        
+        item.innerHTML = `
+          <div class="history-item-details">
+            <div class="history-item-title">${pin.name}</div>
+            <div class="history-item-coords">${pin.lat.toFixed(5)}, ${pin.lon.toFixed(5)}</div>
+          </div>
+          <button class="history-item-delete" title="Delete Saved Pin" data-index="${index}">
+            <svg viewBox="0 0 24 24">
+              <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+            </svg>
+          </button>
+        `;
+
+        // Click list item to zoom & plot pin
+        item.addEventListener('click', (e) => {
+          // If deleted button was clicked, don't trigger plot
+          if (e.target.closest('.history-item-delete')) return;
+          
+          updateActivePin(pin.lat, pin.lon, pin.name);
+          map.flyTo([pin.lat, pin.lon], 16);
+          showToast(`Centering on: "${pin.name}"`, "info");
+        });
+
+        // Click delete button
+        item.querySelector('.history-item-delete').addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteSavedPin(index);
+        });
+
+        container.appendChild(item);
+      });
+    }
+
+    function saveCurrentActivePin() {
+      if (!activeCoords) {
+        showToast("No active coordinate pin to save.", "warning");
+        return;
+      }
+
+      const addressText = document.getElementById('val-address').textContent;
+      const cleanAddress = addressText && !addressText.includes("Resolving") && !addressText.includes("Error") 
+        ? addressText.split(',').slice(0, 2).join(',').trim() 
+        : "Location " + (savedPins.length + 1);
+
+      const pinName = prompt("Enter a label for this pinned location:", cleanAddress);
+      if (pinName === null) return; // Cancelled
+
+      const finalName = pinName.trim() || cleanAddress;
+
+      const newPin = {
+        name: finalName,
+        lat: activeCoords.lat,
+        lon: activeCoords.lon,
+        timestamp: Date.now()
+      };
+
+      savedPins.unshift(newPin); // Add to beginning of history list
+      localStorage.setItem('geolocator_saved_pins', JSON.stringify(savedPins));
+      renderSavedPinsList();
+      showToast(`Pin saved: "${finalName}"`, "success");
+    }
+
+    function deleteSavedPin(index) {
+      const pin = savedPins[index];
+      savedPins.splice(index, 1);
+      localStorage.setItem('geolocator_saved_pins', JSON.stringify(savedPins));
+      renderSavedPinsList();
+      showToast(`Removed pin: "${pin.name}"`, "info");
+    }
+
+    // Export saved pins as standard GeoJSON file
+    function exportPinsToGeoJSON() {
+      if (savedPins.length === 0) return;
+
+      const features = savedPins.map(pin => {
+        return {
+          type: "Feature",
+          properties: {
+            name: pin.name,
+            timestamp: new Date(pin.timestamp).toISOString()
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [pin.lon, pin.lat] // longitude first in GeoJSON
+          }
+        };
+      });
+
+      const geojson = {
+        type: "FeatureCollection",
+        features: features
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geojson, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "geolocator_pins_export.geojson");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      
+      showToast(`Exported ${savedPins.length} pins to GeoJSON`, "success");
+    }
+
+    // ══════════════════════════════════════════════════════
+    // HELPER FUNCTIONS & LISTENERS
+    // ══════════════════════════════════════════════════════
+    
+    // Copy active pin coordinates to clipboard
+    function copyActiveCoords() {
+      if (!activeCoords) return;
+      const text = activeCoords.lat.toFixed(6) + ", " + activeCoords.lon.toFixed(6);
+      
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          showToast("Coordinates copied to clipboard!", "success");
+        })
+        .catch(err => {
+          console.error("Clipboard copy failed: ", err);
+          showToast("Failed to copy coordinates.", "error");
+        });
+    }
+
+    // Display high-fidelity toast notification
+    function showToast(message, type = "info") {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      
+      let icon = '';
+      if (type === 'success') {
+        icon = '<svg width="16" height="16" fill="var(--success)" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+      } else if (type === 'error') {
+        icon = '<svg width="16" height="16" fill="var(--accent)" viewBox="0 0 24 24"><path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z"/></svg>';
+      } else if (type === 'warning') {
+        icon = '<svg width="16" height="16" fill="var(--warning)" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>';
+      } else {
+        // info
+        icon = '<svg width="16" height="16" fill="var(--primary)" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
+      }
+
+      toast.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          ${icon}
+          <span>${message}</span>
+        </div>
+        <button class="toast-close">&times;</button>
+      `;
+
+      // Close toast on click
+      toast.querySelector('.toast-close').addEventListener('click', () => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      });
+
+      container.appendChild(toast);
+
+      // Auto-remove toast after 4.5 seconds
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateY(-10px)';
+          toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+          setTimeout(() => toast.remove(), 300);
+        }
+      }, 4500);
+    }
+
+    // ══════════════════════════════════════════════════════
+    // EVENT BINDINGS & BOOTSTRAP
+    // ══════════════════════════════════════════════════════
+    document.getElementById('btn-detect-location').addEventListener('click', () => requestDeviceLocation(false));
+    document.getElementById('btn-track-location').addEventListener('click', toggleGPSTracking);
+    document.getElementById('btn-pin-coords').addEventListener('click', handlePinFromInputs);
+    document.getElementById('input-paste').addEventListener('input', parsePasteInput);
+    document.getElementById('btn-copy-coords').addEventListener('click', copyActiveCoords);
+    document.getElementById('btn-save-location').addEventListener('click', saveCurrentActivePin);
+    document.getElementById('btn-export-geojson').addEventListener('click', exportPinsToGeoJSON);
+    document.getElementById('nitt-search-input').addEventListener('input', filterAmritaBuildings);
+
+    // Form inputs Enter key bindings
+    document.getElementById('input-lat').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') handlePinFromInputs();
+    });
+    document.getElementById('input-lon').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') handlePinFromInputs();
+    });
+
+    // Run Initialization on load
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      loadSavedPins();
+
+      // Check for secure context (HTTPS/localhost) and display warning if blocked
+      if (!window.isSecureContext) {
+        const header = document.querySelector('.sidebar-header');
+        const warning = document.createElement('div');
+        warning.className = 'context-warning';
+        warning.innerHTML = `
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2L1 21h22L12 2zm0 17h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+          </svg>
+          <div>
+            <strong>Insecure Connection:</strong> Geolocation is blocked by browser security. 
+            Access via <code>localhost</code> or use <code>HTTPS</code> (e.g. ngrok tunnel) to access your mobile/laptop GPS sensor.
+          </div>
+        `;
+        header.appendChild(warning);
+        showToast("GPS sensor blocked due to insecure HTTP connection.", "error");
+      }
+    });
+
+    // Styles for building polygons
+    const defaultBuildingStyle = {
+      color: 'rgba(99, 102, 241, 0.25)',
+      weight: 1.2,
+      fillColor: 'rgba(99, 102, 241, 0.08)',
+      fillOpacity: 0.35
+    };
+
+    const activeBuildingStyle = {
+      color: '#10b981',
+      weight: 2.5,
+      fillColor: '#10b981',
+      fillOpacity: 0.3,
+      className: 'active-building-highlight'
+    };
+
+    // ══════════════════════════════════════════════════════
+    // Amrita CAMPUS GEOFENCE ENGINE (RAY-CASTING PiP)
+    // ══════════════════════════════════════════════════════
+    async function loadCampusGeofences() {
+      // 1. Fetch and plot campus boundary
+      try {
+        const boundaryRes = await fetch('/amrita_data/amrita_campus_boundary.geojson');
+        const boundaryData = await boundaryRes.json();
+        
+        // Find the feature containing the university boundary polygon
+        const boundaryFeature = boundaryData.features.find(f => 
+          f.geometry.type === 'Polygon' && f.properties.name && f.properties.name.includes("National Institute of Technology")
+        );
+
+        if (boundaryFeature) {
+          boundaryGeometry = boundaryFeature.geometry;
+          campusBoundary = L.geoJSON(boundaryFeature, {
+            style: {
+              color: '#f59e0b',
+              weight: 2.5,
+              dashArray: '6, 6',
+              fillColor: '#f59e0b',
+              fillOpacity: 0.02
+            }
+          }).addTo(map);
+        }
+      } catch (e) {
+        console.error("Error loading campus boundary:", e);
+      }
+
+      // 2. Fetch and plot buildings
+      try {
+        const buildingsRes = await fetch('/amrita_data/amrita_buildings.geojson');
+        const buildingsData = await buildingsRes.json();
+        
+        // Add to map
+        L.geoJSON(buildingsData, {
+          style: defaultBuildingStyle,
+          onEachFeature: function(feature, layer) {
+            const bldIdx = feature.properties.building_idx || feature.properties.osm_id;
+            campusBuildings.push({
+              feature: feature,
+              layer: layer,
+              name: feature.properties.name || `Building ${bldIdx}`,
+              id: bldIdx
+            });
+
+            // Bind quick popup
+            layer.bindPopup(`
+              <div class="popup-title">${feature.properties.name || 'Unnamed Building'}</div>
+              <div class="popup-coords" style="margin-top: 2px;">
+                Type: ${feature.properties.building || 'yes'}<br>
+                Source: ${feature.properties.source || 'osm'}
+              </div>
+            `);
+
+            // Double click to zoom to building
+            layer.on('dblclick', function(e) {
+              map.fitBounds(layer.getBounds());
+            });
+          }
+        }).addTo(buildingLayers);
+
+        buildingLayers.addTo(map);
+        showToast(`Loaded ${campusBuildings.length} campus building zones.`, "success");
+        
+        // Populate sidebar directory
+        filterAmritaBuildings();
+      } catch (e) {
+        console.error("Error loading campus buildings:", e);
+      }
+    }
+
+    // Ray-Casting Point-in-Polygon (PiP) algorithm
+    function isPointInPolygon(point, coordinates) {
+      const x = point[0], y = point[1]; // x = lon, y = lat
+      let inside = false;
+      
+      const ring = coordinates[0]; // exterior ring
+      if (!ring || ring.length < 3) return false;
+      
+      const n = ring.length;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1];
+        const xj = ring[j][0], yj = ring[j][1];
+        
+        if (yi === yj) continue;
+        
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function checkGeofence(lon, lat, geometry) {
+      if (geometry.type === 'Polygon') {
+        return isPointInPolygon([lon, lat], geometry.coordinates);
+      } else if (geometry.type === 'MultiPolygon') {
+        for (let poly of geometry.coordinates) {
+          if (isPointInPolygon([lon, lat], poly)) return true;
+        }
+      }
+      return false;
+    }
+
+    // Resolve lat/lon to Amrita geofence zones
+    function resolveLocationGeofence(lat, lon) {
+      const hud = document.getElementById('geofence-hud');
+      if (!hud) return;
+      const dot = hud.querySelector('.hud-status-dot');
+      const text = hud.querySelector('.hud-status-text');
+      const bldName = hud.querySelector('.hud-building-name');
+      const details = hud.querySelector('.hud-details');
+
+      let nearestBld = null;
+      let minDistance = Infinity;
+
+      // Reset previous highlighted building layer
+      if (highlightedLayer) {
+        highlightedLayer.setStyle(defaultBuildingStyle);
+        highlightedLayer = null;
+      }
+
+      // 1. Check if inside campus boundary
+      let insideCampus = false;
+      if (boundaryGeometry) {
+        insideCampus = checkGeofence(lon, lat, boundaryGeometry);
+      } else {
+        // Fallback: Amrita Vishwa Vidyapeetham campus bounding box
+        insideCampus = (lat >= 10.885 && lat <= 10.925 && lon >= 76.882 && lon <= 76.922);
+      }
+
+      if (!insideCampus) {
+        dot.className = 'hud-status-dot status-off';
+        text.textContent = "Outside Campus";
+        bldName.textContent = "Off Campus";
+        details.textContent = "Coordinates lie outside Amrita Vishwa Vidyapeetham boundary.";
+        return;
+      }
+
+      // 2. Check if inside any specific building
+      let activeBuilding = null;
+      for (let b of campusBuildings) {
+        if (checkGeofence(lon, lat, b.feature.geometry)) {
+          activeBuilding = b;
+          break;
+        }
+      }
+
+      if (activeBuilding) {
+        // Inside building!
+        dot.className = 'hud-status-dot status-inside';
+        text.textContent = "Inside Building";
+        bldName.textContent = activeBuilding.name;
+        details.textContent = `Building ID: ${activeBuilding.id} · Resolved via Ray-Casting`;
+
+        // Highlight layer on map
+        highlightedLayer = activeBuilding.layer;
+        highlightedLayer.setStyle(activeBuildingStyle);
+        highlightedLayer.bringToFront();
+      } else {
+        // Inside campus boundary, but not inside any specific building
+        dot.className = 'hud-status-dot status-grounds';
+        text.textContent = "Campus Grounds";
+        bldName.textContent = "Amrita Vishwa Vidyapeetham Grounds";
+        
+        // Find nearest named building
+        minDistance = Infinity;
+        nearestBld = null;
+        for (let b of campusBuildings) {
+          if (b.feature.properties.name) {
+            const bounds = b.layer.getBounds();
+            const center = bounds.getCenter();
+            const dist = calculateHaversineDistance(lat, lon, center.lat, center.lng);
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestBld = b;
+            }
+          }
+        }
+        
+        if (nearestBld) {
+          const meters = Math.round(minDistance * 1000);
+          details.textContent = `Outside buildings. Nearest: ${nearestBld.name} (${meters}m away)`;
+        } else {
+          details.textContent = "Not inside any resolved building polygon.";
+        }
+      }
+
+      // Post location update to parent frame (Hypersphere Dashboard Integration)
+      try {
+        const payload = {
+          type: "LOCATION_UPDATE",
+          latitude: lat,
+          longitude: lon,
+          insideCampus: insideCampus,
+          buildingName: activeBuilding ? activeBuilding.name : (insideCampus ? "Amrita Vishwa Vidyapeetham Grounds" : "Off Campus"),
+          buildingId: activeBuilding ? activeBuilding.id : null,
+          nearestBuilding: nearestBld ? nearestBld.name : null,
+          nearestDistance: nearestBld ? minDistance : null
+        };
+        window.parent.postMessage(payload, "*");
+      } catch (err) {
+        console.error("Failed to post message to parent:", err);
+      }
+    }
+
+    // Filter campus directory listing in sidebar
+    function filterAmritaBuildings() {
+      const queryInput = document.getElementById('nitt-search-input');
+      if (!queryInput) return;
+      const query = queryInput.value.toLowerCase().trim();
+      const container = document.getElementById('nitt-buildings-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      // Only show buildings with actual names, sort alphabetically
+      const namedBuildings = campusBuildings
+        .filter(b => b.feature.properties.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const filtered = namedBuildings.filter(b => b.name.toLowerCase().includes(query));
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state">No matching buildings found</div>';
+        return;
+      }
+
+      filtered.forEach(b => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        item.style.padding = '8px 10px';
+        item.style.borderLeft = '3px solid rgba(99, 102, 241, 0.4)';
+        
+        item.innerHTML = `
+          <div class="history-item-details" style="width: 100%;">
+            <div class="history-item-title" style="font-size: 0.76rem; color: #fff; font-weight: 600;">${b.name}</div>
+            <div class="history-item-coords" style="font-size: 0.65rem; color: var(--text-darker);">ID: ${b.id}</div>
+          </div>
+        `;
+
+        item.addEventListener('click', () => {
+          const bounds = b.layer.getBounds();
+          map.fitBounds(bounds);
+          
+          const center = bounds.getCenter();
+          updateActivePin(center.lat, center.lng, b.name);
+          showToast(`Selected building: "${b.name}"`, "info");
+        });
+
+        container.appendChild(item);
+      });
+    }
+  </script>
+
+</body>
+</html>

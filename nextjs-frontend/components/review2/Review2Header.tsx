@@ -1,59 +1,60 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
-import { Cpu, ChevronRight, Activity, ArrowLeft } from "lucide-react";
+import { Cpu, ArrowLeft, Activity, ExternalLink } from "lucide-react";
 
 export default function Review2Header() {
   return (
-    <header className="border-b border-zinc-200 bg-white sticky top-0 z-50 shadow-sm">
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
-        {/* Left: Logo + Title */}
-        <div className="flex items-center gap-3 min-w-0">
+    <header className="border-b border-slate-200/80 bg-white/95 backdrop-blur-xs sticky top-0 z-50 w-full">
+      <div className="max-w-[1340px] mx-auto w-full px-4 sm:px-6 h-11 flex items-center justify-between gap-4">
+        {/* Left */}
+        <div className="flex items-center gap-2.5 min-w-0">
           <Link
             href="/dashboard"
-            className="h-8 w-8 flex-shrink-0 rounded-lg bg-indigo-600 flex items-center justify-center hover:bg-indigo-700 transition-colors"
+            className="h-7 w-7 flex-shrink-0 rounded-md bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors shadow-2xs overflow-hidden p-0.5"
+            title="Amrita Vishwa Vidyapeetham"
           >
-            <Cpu className="h-4 w-4 text-white" />
+            <img src="/amrita-favicon.png" alt="Amrita Vishwa Vidyapeetham" className="h-full w-full object-contain" />
           </Link>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-zinc-900 text-sm whitespace-nowrap tracking-tight">
-                Hypersphere Engine
-              </span>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
-                Review 2 · POC
-              </span>
-              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200 whitespace-nowrap hidden md:inline-block">
-                RPi ARM64 Edge Gateway
-              </span>
-            </div>
-            <p className="text-[11px] text-zinc-400 truncate hidden sm:block">
-              System Design, Deep ML Analysis &amp; Interactive Edge Demo
-            </p>
-          </div>
+          <span className="font-semibold text-slate-900 text-xs sm:text-sm tracking-tight">Hypersphere Engine</span>
+          <span className="text-slate-300 text-xs">/</span>
+          <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded">
+            Review 2 · POC
+          </span>
         </div>
 
-        {/* Right: Nav links */}
-        <nav className="flex items-center gap-2 text-xs shrink-0">
+        {/* Right */}
+        <nav className="flex items-center gap-1.5 text-xs shrink-0">
+          <Link
+            href="/geofence"
+            className="h-7 px-2.5 rounded-md border border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 text-[11px] font-semibold"
+            title="Interactive Leaflet Campus Map with 103 extracted OSM buildings"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Amrita Map</span>
+            <span className="text-[9px] bg-emerald-200/70 text-emerald-900 px-1 py-0.2 rounded font-mono">103</span>
+          </Link>
           <Link
             href="/dashboard"
-            className="px-3 py-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-600 transition-colors flex items-center gap-1.5"
+            className="h-7 px-2.5 rounded-md border border-slate-200 bg-slate-50/80 text-slate-600 hover:bg-slate-100 transition-colors flex items-center gap-1.5 text-[11px]"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Faculty Portal</span>
+            <ArrowLeft className="h-3 w-3" />
+            <span className="hidden sm:inline font-medium">Dashboard</span>
           </Link>
           <Link
             href="/demo"
-            className="px-3 py-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-600 transition-colors flex items-center gap-1.5"
+            className="h-7 px-2.5 rounded-md border border-slate-200 bg-slate-50/80 text-slate-600 hover:bg-slate-100 transition-colors flex items-center gap-1.5 text-[11px]"
           >
-            <span>Live Pipeline</span>
-            <ChevronRight className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline font-medium">Live Pipeline</span>
+            <ExternalLink className="h-3 w-3" />
           </Link>
           <Link
             href="/admin/health"
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-600 transition-colors flex items-center gap-1.5"
+            className="h-7 px-2.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white transition-colors flex items-center gap-1.5 font-medium text-xs shadow-xs"
           >
-            <Activity className="h-3.5 w-3.5" />
-            <span>Telemetry</span>
+            <Activity className="h-3.5 w-3.5 text-emerald-400" />
+            Telemetry
           </Link>
         </nav>
       </div>
